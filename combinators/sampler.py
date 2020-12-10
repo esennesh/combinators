@@ -3,11 +3,41 @@
 import collections
 from contextlib import contextmanager
 
-from probtorch.stochastic import Provenance
+import probtorch
 import torch
 import torch.nn as nn
 
+from .tracing import NestedTrace
 from . import utils
+
+class ImportanceSampler(nn.Module):
+    def __init__(self, target, proposal, batch_shape=(1,)):
+        super().__init__()
+        self._batch_shape = batch_shape
+        self.add_module('target', target)
+        self.add_module('proposal', proposal)
+
+    @property
+    def batch_shape(self):
+        return self._batch_shape
+
+    def forward(self, *args, **kwargs):
+        if args and isinstance(args[-1], dict):
+            kwargs = args[-1]
+            args = args[:-1]
+
+        q = NestedTrace()
+        _, q = self.proposal(q, *args, **kwargs)
+
+        p = NestedTrace(q=q)
+        result, p = self.target(p, *args, **kwargs)
+
+        log_weight = p.conditioning_factor(self.batch_shape)
+        assert log_weight.shape == self.batch_shape
+        return result, (log_weight, p)
+
+    def update(self, args, feedback):
+        raise NotImplementedError()
 
 class Sampler(nn.Module):
     @property
