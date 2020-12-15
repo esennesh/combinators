@@ -9,9 +9,54 @@ import torch
 
 from . import lens, utils
 
+class NestedTrace(Trace):
+    def __init__(self, q=None):
+        super().__init__()
+        self._q = q if q else Trace()
+
+    def variable(self, Dist, *args, **kwargs):
+        name = kwargs.get('name', None)
+        if name is not None and name in self._q:
+            provenance = kwargs.pop('provenance', None)
+            assert provenance is not Provenance.OBSERVED
+            assert isinstance(self._q[name], probtorch.RandomVariable)
+
+            kwargs['value'] = self._q[name].value
+            if self._q[name].provenance is Provenance.OBSERVED:
+                kwargs['provenance'] = Provenance.OBSERVED
+            else:
+                kwargs['provenance'] = Provenance.REUSED
+
+        return super().variable(Dist, *args, **kwargs)
+
+    def conditioning_factor(self, batch_shape, nodes_next=[]):
+        device = 'cpu'
+        for v in self.values():
+            device = v.log_prob.device
+            if device != 'cpu':
+                break
+        dims = tuple(range(len(batch_shape)))
+        null = torch.zeros(batch_shape, device=device)
+
+        log_likelihood = self.log_joint(sample_dims=dims,
+                                        nodes=list(self.conditioned()),
+                                        reparameterized=False) + null
+        reused = [k for k in self if self[k].provenance == Provenance.REUSED]
+        log_prior = self.log_joint(sample_dims=dims, nodes=reused,
+                                   reparameterized=False) -\
+                    self.log_joint(sample_dims=dims, nodes=nodes_next,
+                                   reparameterized=False)
+
+        if isinstance(self._q, NestedTrace):
+            log_proposal = self._q.conditioning_factor(batch_shape, reused)
+        else:
+            log_proposal = self._q.log_joint(sample_dims=dims, nodes=reused,
+                                             reparameterized=False)
+        return log_likelihood + log_prior + log_proposal
+
 @adt
 class TraceDiagram:
-    BOX: Case[tuple, torch.tensor, Trace, str]
+    BOX: Case[tuple, torch.tensor, NestedTrace, str]
     PRODUCT: Case["TraceDiagram", "TraceDiagram"]
     ARROW: Case["TraceDiagram", "TraceDiagram"]
     UNIT: Case[Ty, Ty]
