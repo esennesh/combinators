@@ -148,6 +148,59 @@ class LensBox(monoidal.Box, LensDiagram):
     def update(self):
         return self._update
 
+class Unit(LensBox):
+    def __init__(self, val, cod):
+        def unit(val=val):
+            return val
+        super().__init__('Unit(%d)' % len(cod), LensPRO(0), cod, unit,
+                         lambda fb: ())
+
+class Copy(LensDiagram):
+    """
+    Implements the copy function from dom to 2*dom.
+    >>> assert Copy(3)(0, 1, 2) == (0, 1, 2, 0, 1, 2)
+    """
+    def __init__(self, dom):
+        if not isinstance(dom, LensTy):
+            dom = LensPRO(dom)
+        result = Id(0)
+        for ob in dom:
+            result = result @ _copy(ob)
+        for i in range(1, len(dom)):
+            swaps = Id(0).tensor(*[_swap(dom[k], dom[k+i]) for k in
+                                   range(len(dom) - i)])
+            # swaps = Id(0).tensor(*((len(dom) - i) * [SWAP]))
+            result = result >> Id(dom[:i]) @ swaps @ Id(dom[-i:])
+        super().__init__(dom, dom @ dom, result.boxes, result.offsets,
+                         layers=result.layers)
+
+class Swap(LensDiagram):
+    def __init__(self, left, right):
+        if not isinstance(left, LensTy):
+            left = LensPRO(left)
+        if not isinstance(right, LensTy):
+            right = LensPRO(right)
+        dom, cod = left @ right, right @ left
+        boxes = [SWAP for i in range(len(left)) for j in range(len(right))]
+        offsets = [left + i - 1 - j for j in range(len(left))
+                   for i in range(len(right))]
+        super().__init__(dom, cod, boxes, offsets)
+
+def _copy(ob):
+    assert isinstance(ob, LensOb)
+    return LensBox('copy', LensTy(ob), LensTy(ob, ob),
+                   lambda *vals: vals + vals, lambda x, y, feedback: feedback)
+
+def _swap(obx, oby):
+    assert isinstance(obx, LensOb) and isinstance(oby, LensOb)
+    return LensBox('swap', LensTy(obx, oby), LensTy(oby, obx),
+                   lambda x, y: (y, x), lambda x, y, fby, fbx: (fbx, fby))
+
+COPY = LensBox('copy', LensPRO(1), LensPRO(2), lambda *vals: vals + vals,
+               lambda x, y, feedback: feedback)
+SWAP = LensBox('swap', LensPRO(2), LensPRO(2), lambda x, y: (y, x),
+               lambda x, y, fby, fbx: (fbx, fby))
+
 class LensFunction(monoidal.Box):
     def __init__(self, name, dom, cod, sample, update, **params):
         assert isinstance(dom, LensTy)
