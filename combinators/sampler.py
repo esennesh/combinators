@@ -10,7 +10,10 @@ class ImportanceSampler(nn.Module):
         super().__init__()
         self._batch_shape = batch_shape
         self.add_module('target', target)
-        self.add_module('proposal', proposal)
+        if isinstance(proposal, nn.Module):
+            self.add_module('proposal', proposal)
+        else:
+            self.proposal = None
 
     @property
     def batch_shape(self):
@@ -21,10 +24,13 @@ class ImportanceSampler(nn.Module):
             kwargs = args[-1]
             args = args[:-1]
 
-        q = NestedTrace()
-        _, q = self.proposal(q, *args, **kwargs)
+        if self.proposal is not None:
+            q = NestedTrace()
+            _, q = self.proposal(q, *args, **kwargs)
+            p = NestedTrace(q=q)
+        else:
+            p = NestedTrace()
 
-        p = NestedTrace(q=q)
         result, p = self.target(p, *args, **kwargs)
 
         log_weight = p.conditioning_factor(self.batch_shape)
