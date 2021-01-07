@@ -78,7 +78,8 @@ class TraceDiagram:
     def join(self, other):
         log_weightx, tracex = self.fold()
         log_weighty, tracey = other.fold()
-        return (log_weightx + log_weighty, utils.join_traces(tracex, tracey))
+        return (log_weightx + log_weighty, utils.join_traces(tracex, tracey,
+                                                             True))
 
     @staticmethod
     def id(dom):
