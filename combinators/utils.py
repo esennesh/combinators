@@ -106,11 +106,14 @@ def trace_map(trace, f):
         p[k] = f(trace[k])
     return p
 
-def join_traces(first, second):
+def join_traces(first, second, unary_concat=False):
     p = probtorch.Trace()
     for k, v in first.items():
         p[k] = v
     for k, v in second.items():
+        if unary_concat:
+            while k in p:
+                k = k + 'i'
         p[k] = v
     return p
 
