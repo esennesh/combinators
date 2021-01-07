@@ -107,9 +107,7 @@ class TracedLensDiagram(lens.LensDiagram):
                                  old.layers)
 
 class TracedLensBox(lens.LensBox, TracedLensDiagram):
-    def __init__(self, name, dom, cod, sample, update):
-        super().__init__(name, dom, cod, sample, update)
-
+    pass
 
 class TracedFunction:
     def __init__(self, name, function):
