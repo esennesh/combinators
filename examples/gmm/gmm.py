@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from torch.distributions import Categorical
+import torch
 import torch.nn as nn
 
 class GaussianClusters(nn.Module):
