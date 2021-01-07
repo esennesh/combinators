@@ -1,26 +1,38 @@
 #!/usr/bin/env python3
 
-from torch.distributions import Categorical, Dirichlet, Normal
-from torch.nn.functional import softplus
+from torch.distributions import Categorical
+import torch.nn as nn
 
-import combinators.model as model
-import combinators.utils as utils
+class GaussianClusters(nn.Module):
+    def __init__(self, num_clusters, dim=2):
+        super().__init__()
 
-class InitGmm(model.Primitive):
-    def _forward(self, pi_name='Pi', **kwargs):
-        pi = self.param_sample(Dirichlet, name=pi_name)
-        mu = self.param_sample(Normal, name='mu')
-        sigma = self.param_sample(Normal, name='sigma')
-        return mu, sigma, pi
+        self._num_clusters = num_clusters
+        self._dim = dim
 
-class Gmm(model.Primitive):
-    def _forward(self, mu, sigma, pi, latent_name='Z', observable_name='X',
-                 data={}):
-        z = self.sample(Categorical, softplus(pi), name=latent_name)
-        if observable_name:
-            x = self.observe(observable_name, data.get(observable_name),
-                             Normal, utils.particle_index(mu, z),
-                             softplus(utils.particle_index(sigma, z)))
-        else:
-            x = None
-        return z, x
+        self.register_buffer('mu', torch.zeros(self._num_clusters, self._dim))
+        self.register_buffer('concentration', torch.ones(self._num_clusters,
+                                                         self._dim))
+        self.register_buffer('rate', torch.ones(self._num_clusters, self._dim))
+
+    def forward(self, p):
+        mus = p.normal(self.mu, torch.ones_like(self.mu), name='mu')
+        taus = p.gamma(self.concentration, self.rate, name='tau')
+
+        return (mus, 1. / taus), p
+
+class SampleCluster(nn.Module):
+    def __init__(self, num_clusters):
+        super().__init__()
+
+        self._num_clusters = num_clusters
+        self.register_buffer('pi', torch.ones(self._num_clusters))
+
+    def forward(self, p, mus, sigmas):
+        z = p.variable(Categorical, self.pi, name='z')
+        return (mus[z], sigmas[z]), p
+
+class SamplePoint(nn.Module):
+    def forward(self, p, mu, sigma, x_observed=None):
+        x = p.normal(mu, sigma, name='x', value=x_observed)
+        return x, p
