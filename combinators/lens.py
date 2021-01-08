@@ -86,13 +86,26 @@ class LensDiagram(monoidal.Diagram):
         assert isinstance(cod, LensTy)
         super().__init__(dom, cod, boxes, offsets, layers=layers)
 
+    def compile(self):
+        return SEMANTIC_FUNCTOR(self)
+
     def __call__(self, *vals, **kwargs):
         """
-        Call method implemented using the lens Functor.
+        Call method implemented using the semantic Functor.
         """
         if kwargs:
             vals = vals + (kwargs,)
-        return SAMPLE_FUNCTOR(self)(*vals)
+        semantics = self.compile()
+        return semantics(*vals)
+
+    def update(self, *vals, **kwargs):
+        """
+        Update method implemented using the semantic functor.
+        """
+        if kwargs:
+            vals = vals + (kwargs,)
+        semantics = self.compile()
+        return semantics(*vals)
 
     @staticmethod
     def upgrade(old):
@@ -279,4 +292,4 @@ class LensFunction(monoidal.Box):
                                len(box.dom.lower), box.update)
         return LensFunction(box.name, box.dom, box.cod, sample, update)
 
-SAMPLE_FUNCTOR = LensFunctor(lambda lob: lob, LensFunction.create)
+SEMANTIC_FUNCTOR = LensFunctor(lambda lob: lob, LensFunction.create)
