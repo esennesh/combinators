@@ -2,7 +2,7 @@
 
 from adt import adt, Case
 from discopy import cartesian, cat, messages, monoidal
-from discopy.monoidal import PRO, Sum, Ty
+from discopy.rigid import PRO, Ty
 from functools import reduce
 import probtorch
 from probtorch.stochastic import Provenance, Trace
@@ -155,5 +155,11 @@ class TracedLensFunction(lens.LensFunction):
                                       base.update)
         return base
 
-TRACED_SAMPLE_FUNCTOR = lens.LensFunctor(lambda ob: ob,
-                                         TracedLensFunction.create)
+TRACED_SEMANTIC_FUNCTOR = lens.LensFunctor(lambda ob: ob,
+                                           TracedLensFunction.create)
+
+SAMPLE_FUNCTOR = monoidal.Functor(lambda ob: ob.upper, lambda lf: lf.sample,
+                                  ob_factory=PRO, ar_factory=cartesian.Box)
+
+UPDATE_FUNCTOR = monoidal.Functor(lambda ob: ob.upper, lambda lf: lf.update,
+                                  ob_factory=PRO, ar_factory=cartesian.Box)
