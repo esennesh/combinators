@@ -110,12 +110,19 @@ TRACING_FUNCTOR = monoidal.Functor(lambda ob: ob, retrieve_trace, ob_factory=Ty,
                                    ar_factory=TraceDiagram)
 
 class TracedLensDiagram(lens.LensDiagram):
-    def __call__(self, *vals, **kwargs):
+    def compile(self):
+        return TRACED_SEMANTIC_FUNCTOR(self)
+
+    @staticmethod
+    def trace(semantics, *vals, **kwargs):
         if kwargs:
             vals = vals + (kwargs,)
-        morphism = TRACED_SAMPLE_FUNCTOR(self)
-        result = morphism(*vals)
-        trace = TRACING_FUNCTOR(morphism.sample)
+        result = semantics.sample(*vals)
+        trace = TRACING_FUNCTOR(semantics.sample)
+        return result, trace
+
+    def __call__(self, *vals, **kwargs):
+        result, trace = TracedLensDiagram.trace(self.compile(), *vals, **kwargs)
         return result, trace.fold()
 
     @staticmethod
