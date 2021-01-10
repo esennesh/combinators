@@ -3,9 +3,11 @@
 from adt import adt, Case
 from discopy import cartesian, cat, messages, monoidal
 from discopy.monoidal import PRO, Sum, Ty
+from functools import reduce
 import probtorch
 from probtorch.stochastic import Provenance, Trace
 import torch
+import typing
 
 from . import lens, utils
 
@@ -57,29 +59,29 @@ class NestedTrace(Trace):
 @adt
 class TraceDiagram:
     BOX: Case[tuple, torch.tensor, NestedTrace, str]
-    PRODUCT: Case["TraceDiagram", "TraceDiagram"]
-    ARROW: Case["TraceDiagram", "TraceDiagram"]
+    PRODUCT: Case[typing.List["TraceDiagram"]]
+    ARROW: Case[typing.List["TraceDiagram"]]
     UNIT: Case[Ty, Ty]
 
     def __matmul__(self, other):
-        return TraceDiagram.PRODUCT(self, other)
+        if self._key == TraceDiagram._Key.PRODUCT:
+            return TraceDiagram.PRODUCT(self.product() + [other])
+        return TraceDiagram.PRODUCT([self, other])
 
     def __rshift__(self, other):
-        return TraceDiagram.ARROW(self, other)
+        if self._key == TraceDiagram._Key.ARROW:
+            return TraceDiagram.ARROW(self.arrow() + [other])
+        return TraceDiagram.ARROW([self, other])
 
     def fold(self):
         return self.match(
             box=lambda _, log_weight, trace, __: (log_weight, trace),
-            product=lambda tx, ty: tx.join(ty),
-            arrow=lambda tx, ty: tx.join(ty),
+            product=lambda ts: reduce(utils.join_tracing_states,
+                                      [t.fold() for t in ts]),
+            arrow=lambda ts: reduce(utils.join_tracing_states,
+                                    [t.fold() for t in ts]),
             unit=lambda _, __: (0., {})
         )
-
-    def join(self, other):
-        log_weightx, tracex = self.fold()
-        log_weighty, tracey = other.fold()
-        return (log_weightx + log_weighty, utils.join_traces(tracex, tracey,
-                                                             True))
 
     @staticmethod
     def id(dom):
