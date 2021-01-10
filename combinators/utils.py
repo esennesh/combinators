@@ -15,6 +15,11 @@ from torch.nn.functional import logsigmoid, log_softmax
 
 EMPTY_TRACE = collections.defaultdict(lambda: None)
 
+def join_tracing_states(statex, statey, unary_concat=True):
+    lwx, tx = statex
+    lwy, ty = statey
+    return (lwx + lwy, join_traces(tx, ty, unary_concat))
+
 def batch_where(condition, yes, no, batch_shape):
     yes, unique = batch_collapse(yes, batch_shape)
     no, _ = batch_collapse(no, batch_shape)
