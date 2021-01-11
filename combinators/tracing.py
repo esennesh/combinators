@@ -134,9 +134,7 @@ class TracedFunction:
 
     @property
     def trace(self):
-        trace = self._trace
-        self._trace = None
-        return trace
+        return self._trace
 
     def __call__(self, *vals):
         results, (log_weight, trace) = self._function(*vals)
