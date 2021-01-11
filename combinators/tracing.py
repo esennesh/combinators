@@ -62,16 +62,29 @@ class TraceDiagram:
     PRODUCT: Case[typing.List["TraceDiagram"]]
     ARROW: Case[typing.List["TraceDiagram"]]
     UNIT: Case[Ty, Ty]
+    IDENT: Case[Ty]
 
     def __matmul__(self, other):
-        if self._key == TraceDiagram._Key.PRODUCT:
-            return TraceDiagram.PRODUCT(self.product() + [other])
-        return TraceDiagram.PRODUCT([self, other])
+        if self._key == TraceDiagram._Key.IDENT and not self.ident():
+            return other
+        if other._key == TraceDiagram._Key.IDENT and not other.ident():
+            return self
+
+        ls = self.product() if self._key == TraceDiagram._Key.PRODUCT else\
+             [self]
+        rs = other.product() if other._key == TraceDiagram._Key.PRODUCT else\
+             [other]
+        return TraceDiagram.PRODUCT(ls + rs)
 
     def __rshift__(self, other):
-        if self._key == TraceDiagram._Key.ARROW:
-            return TraceDiagram.ARROW(self.arrow() + [other])
-        return TraceDiagram.ARROW([self, other])
+        if self._key == TraceDiagram._Key.IDENT:
+            return other
+        if other._key == TraceDiagram._Key.IDENT:
+            return self
+
+        ls = self.arrow() if self._key == TraceDiagram._Key.ARROW else [self]
+        rs = other.arrow() if other._key == TraceDiagram._Key.ARROW else [other]
+        return TraceDiagram.ARROW(ls + rs)
 
     def fold(self):
         return self.match(
@@ -80,12 +93,13 @@ class TraceDiagram:
                                       [t.fold() for t in ts]),
             arrow=lambda ts: reduce(utils.join_tracing_states,
                                     [t.fold() for t in ts]),
-            unit=lambda _, __: (0., {})
+            unit=lambda _, __: (0., {}),
+            ident=lambda _: (0., {})
         )
 
     @staticmethod
     def id(dom):
-        return TraceDiagram.UNIT(dom, dom)
+        return TraceDiagram.IDENT(dom)
 
 def retrieve_trace(func):
     if isinstance(func.function, TracedFunction):
