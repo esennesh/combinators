@@ -122,8 +122,7 @@ class TracedLensDiagram(lens.LensDiagram):
         return result, trace
 
     def __call__(self, *vals, **kwargs):
-        result, trace = TracedLensDiagram.trace(self.compile(), *vals, **kwargs)
-        return result, trace.fold()
+        return TracedLensDiagram.trace(self.compile(), *vals, **kwargs)
 
     @staticmethod
     def upgrade(old):
