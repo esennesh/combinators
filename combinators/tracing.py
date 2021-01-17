@@ -2,7 +2,7 @@
 
 from adt import adt, Case
 from discopy import cartesian, cat, messages, monoidal
-from discopy.monoidal import PRO, Sum, Ty
+from discopy.rigid import PRO, Ty
 from functools import reduce
 import probtorch
 from probtorch.stochastic import Provenance, Trace
@@ -110,13 +110,19 @@ TRACING_FUNCTOR = monoidal.Functor(lambda ob: ob, retrieve_trace, ob_factory=Ty,
                                    ar_factory=TraceDiagram)
 
 class TracedLensDiagram(lens.LensDiagram):
-    def __call__(self, *vals, **kwargs):
+    def compile(self):
+        return TRACED_SEMANTIC_FUNCTOR(self)
+
+    @staticmethod
+    def trace(semantics, *vals, **kwargs):
         if kwargs:
             vals = vals + (kwargs,)
-        morphism = TRACED_SAMPLE_FUNCTOR(self)
-        result = morphism(*vals)
-        trace = TRACING_FUNCTOR(morphism.sample)
-        return result, trace.fold()
+        result = semantics.sample(*vals)
+        trace = TRACING_FUNCTOR(semantics.sample)
+        return result, trace
+
+    def __call__(self, *vals, **kwargs):
+        return TracedLensDiagram.trace(self.compile(), *vals, **kwargs)
 
     @staticmethod
     def upgrade(old):
@@ -155,5 +161,11 @@ class TracedLensFunction(lens.LensFunction):
                                       base.update)
         return base
 
-TRACED_SAMPLE_FUNCTOR = lens.LensFunctor(lambda ob: ob,
-                                         TracedLensFunction.create)
+TRACED_SEMANTIC_FUNCTOR = lens.LensFunctor(lambda ob: ob,
+                                           TracedLensFunction.create)
+
+SAMPLE_FUNCTOR = monoidal.Functor(lambda ob: ob.upper, lambda lf: lf.sample,
+                                  ob_factory=PRO, ar_factory=cartesian.Box)
+
+UPDATE_FUNCTOR = monoidal.Functor(lambda ob: ob.upper, lambda lf: lf.update,
+                                  ob_factory=PRO, ar_factory=cartesian.Box)
