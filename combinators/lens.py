@@ -7,63 +7,40 @@ from discopy.monoidal import PRO, Sum, Ty
 
 LENS_OB_DESCRIPTION = r'$\binom{%s}{%s}$'
 
-class LensOb(cat.Ob):
-    def __init__(self, upper=rigid.PRO(1), lower=rigid.PRO(1)):
-        if not isinstance(upper, Ty):
-            if isinstance(upper, cat.Ob):
-                upper = upper.name
-            upper = Ty(upper)
-        self._upper = upper
+cat.Ob.__and__ = lambda self, other: LensTy(self, lower=other)
 
-        if not isinstance(lower, Ty):
-            if isinstance(lower, cat.Ob):
-                lower = lower.name
-            lower = Ty(lower)
+class LensTy(Ty):
+    def __init__(self, *objects, lower=Ty()):
+        super().__init__(*objects)
+        assert isinstance(lower, Ty)
         self._lower = lower
 
-        super().__init__(LENS_OB_DESCRIPTION % (repr(self._upper),
-                                                repr(self._lower)))
+    @staticmethod
+    def upgrade(old):
+        if isinstance(old, LensTy):
+            return LensTy(*old.upper, lower=old.lower)
+        return LensTy(*old.objects)
 
     @property
     def upper(self):
-        return self._upper
+        return Ty(*self.objects)
 
     @property
     def lower(self):
         return self._lower
 
     def __eq__(self, other):
-        if not isinstance(other, LensOb):
+        if not isinstance(other, LensTy):
             return False
         return self.upper == other.upper and self.lower == other.lower
 
-    def __hash__(self):
-        return hash(repr(self))
-
-cat.Ob.__and__ = lambda self, other: LensTy(LensOb(self, other))
-
-class LensTy(Ty):
-    def __init__(self, *objects):
-        assert all(isinstance(ob, LensOb) for ob in objects)
-        super().__init__(*objects)
-
-    @staticmethod
-    def named(*names):
-        return LensTy(*[LensOb(name, name + "-prime") for name in names])
-
-    @staticmethod
-    def upgrade(old):
-        return LensTy(*old.objects)
-
-    @property
-    def upper(self):
-        return reduce(lambda x, y: x @ y, [ob.upper for ob in self.objects],
-                      Ty())
-
-    @property
-    def lower(self):
-        return reduce(lambda x, y: x @ y, [ob.lower for ob in self.objects],
-                      Ty())
+    def tensor(self, *others):
+        for other in others:
+            if not isinstance(other, LensTy):
+                raise TypeError(messages.type_err(LensTy, other))
+        upper = self.upper.objects + [x for t in others for x in t.upper]
+        lower = self.lower.objects + [x for t in others for x in t.lower]
+        return self.upgrade(LensTy(*upper, lower=Ty(*lower)))
 
 class LensPRO(LensTy):
     def __init__(self, n=0):
