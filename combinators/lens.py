@@ -105,7 +105,7 @@ class LensDiagram(monoidal.Diagram):
         if kwargs:
             vals = vals + (kwargs,)
         semantics = self.compile()
-        return semantics(*vals)
+        return semantics.update(*vals)
 
     @staticmethod
     def upgrade(old):
