@@ -105,7 +105,7 @@ class LensDiagram(monoidal.Diagram):
         if kwargs:
             vals = vals + (kwargs,)
         semantics = self.compile()
-        return semantics(*vals)
+        return semantics.update(*vals)
 
     @staticmethod
     def upgrade(old):
@@ -214,6 +214,11 @@ COPY = LensBox('copy', LensPRO(1), LensPRO(2), lambda *vals: vals + vals,
 SWAP = LensBox('swap', LensPRO(2), LensPRO(2), lambda x, y: (y, x),
                lambda x, y, fby, fbx: (fbx, fby))
 
+class Projection(cartesian.Box):
+    def __init__(self, dom, start, length):
+        func = lambda *vals: vals[start:start+length]
+        super().__init__('Projection', len(dom), length, func)
+
 class LensFunction(monoidal.Box):
     def __init__(self, name, dom, cod, sample, update, **params):
         assert isinstance(dom, LensTy)
@@ -280,7 +285,8 @@ class LensFunction(monoidal.Box):
     def id(dom):
         assert isinstance(dom, LensTy)
         sample = cartesian.Id(len(dom.upper))
-        update = cartesian.Discard(len(dom)) @ cartesian.Id(len(dom.lower))
+        update = Projection(dom.upper @ dom.lower, len(dom.upper),
+                            len(dom.lower))
         return LensFunction('Id(%d)' % len(dom.upper), dom, dom, sample, update)
 
     @staticmethod
