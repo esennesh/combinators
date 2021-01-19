@@ -48,11 +48,21 @@ class LensPRO(LensTy):
             n = len(n)
         if isinstance(n, cat.Ob):
             n = 1
-        lens_ob = LensOb(cat.Ob(1), cat.Ob(1))
-        super().__init__(*(n * [lens_ob]))
+        super().__init__(*(n * [1]), lower=PRO(n))
 
     def __repr__(self):
         return "LensPRO({})".format(len(self))
+
+    @staticmethod
+    def upgrade(old):
+        for obj in old:
+            if obj.name != 1:
+                raise TypeError(messages.type_err(int, obj.name))
+        if isinstance(old, LensTy):
+            for obj in old.lower:
+                if obj.name != 1:
+                    raise TypeError(messages.type_err(int, obj.name))
+        return LensPRO(len(old))
 
 class LensDiagram(monoidal.Diagram):
     """
