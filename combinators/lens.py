@@ -237,7 +237,8 @@ class LensFunction(monoidal.Box):
         other = others[0]
         if not isinstance(other, LensFunction):
             raise TypeError(messages.type_err(LensFunction, other))
-        if len(self.cod) != len(other.dom):
+        if len(self.cod.upper) != len(other.dom.upper) or\
+           len(self.cod.lower) != len(other.dom.lower):
             raise cat.AxiomError(messages.does_not_compose(self, other))
 
         sample = self.sample >> other.sample
