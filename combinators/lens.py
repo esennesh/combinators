@@ -210,11 +210,10 @@ class LensFunction(monoidal.Box):
         assert isinstance(dom, LensTy)
         assert isinstance(cod, LensTy)
 
-        self._name = name
         self._sample = sample
         self._update = update
 
-        super().__init__(str(sample), dom, cod, **params)
+        super().__init__(name, dom, cod, **params)
 
     def __call__(self, *vals):
         return self._sample(*vals)
