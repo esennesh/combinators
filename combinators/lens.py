@@ -169,7 +169,6 @@ class Copy(LensDiagram):
         for i in range(1, len(dom)):
             swaps = Id(0).tensor(*[_swap(dom[k], dom[k+i]) for k in
                                    range(len(dom) - i)])
-            # swaps = Id(0).tensor(*((len(dom) - i) * [SWAP]))
             result = result >> Id(dom[:i]) @ swaps @ Id(dom[-i:])
         super().__init__(dom, dom @ dom, result.boxes, result.offsets,
                          layers=result.layers)
