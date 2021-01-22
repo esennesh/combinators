@@ -8,21 +8,17 @@ from discopy.monoidal import PRO, Sum, Ty
 LENS_OB_DESCRIPTION = r'$\binom{%s}{%s}$'
 
 class LensOb(cat.Ob):
-    def __init__(self, upper=rigid.PRO(1), lower=rigid.PRO(1)):
-        if not isinstance(upper, Ty):
-            if isinstance(upper, cat.Ob):
-                upper = upper.name
-            upper = Ty(upper)
+    def __init__(self, upper=PRO(1), lower=PRO(1)):
+        if not isinstance(upper, cat.Ob):
+            upper = cat.Ob(str(upper))
         self._upper = upper
 
-        if not isinstance(lower, Ty):
-            if isinstance(lower, cat.Ob):
-                lower = lower.name
-            lower = Ty(lower)
+        if not isinstance(lower, cat.Ob):
+            lower = cat.Ob(str(lower))
         self._lower = lower
 
-        super().__init__(LENS_OB_DESCRIPTION % (repr(self._upper),
-                                                repr(self._lower)))
+        super().__init__(LENS_OB_DESCRIPTION % (self.upper.name,
+                                                self.lower.name))
 
     @property
     def upper(self):
@@ -40,7 +36,7 @@ class LensOb(cat.Ob):
     def __hash__(self):
         return hash(repr(self))
 
-cat.Ob.__and__ = lambda self, other: LensTy(LensOb(self, other))
+cat.Ob.__and__ = LensOb
 
 class LensTy(Ty):
     def __init__(self, *objects):
