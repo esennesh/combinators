@@ -2,7 +2,7 @@
 
 from functools import reduce
 
-from discopy import cartesian, cat, messages, monoidal, rigid
+from discopy import cartesian, cat, messages, monoidal
 from discopy.monoidal import PRO, Sum, Ty
 
 LENS_OB_DESCRIPTION = r'$\binom{%s}{%s}$'
@@ -164,7 +164,7 @@ class LensBox(monoidal.Box, LensDiagram):
         assert isinstance(cod, LensTy)
         self._sample = sample
         self._update = update
-        rigid.Box.__init__(self, name, dom, cod, data=data)
+        monoidal.Box.__init__(self, name, dom, cod, data=data)
         LensDiagram.__init__(self, dom, cod, [self], [0])
 
     @property
