@@ -2,45 +2,82 @@
 
 from functools import reduce
 
-from discopy import cartesian, cat, messages, monoidal, rigid
+from discopy import cartesian, cat, messages, monoidal
 from discopy.monoidal import PRO, Sum, Ty
 
 LENS_OB_DESCRIPTION = r'$\binom{%s}{%s}$'
 
-cat.Ob.__and__ = lambda self, other: LensTy(self, lower=other)
+class LensOb(cat.Ob):
+    def __init__(self, upper=PRO(1), lower=PRO(1)):
+        if not isinstance(upper, cat.Ob):
+            upper = cat.Ob(str(upper))
+        self._upper = upper
 
-class LensTy(Ty):
-    def __init__(self, *objects, lower=Ty()):
-        super().__init__(*objects)
-        assert isinstance(lower, Ty)
+        if not isinstance(lower, cat.Ob):
+            lower = cat.Ob(str(lower))
         self._lower = lower
 
-    @staticmethod
-    def upgrade(old):
-        if isinstance(old, LensTy):
-            return LensTy(*old.upper, lower=old.lower)
-        return LensTy(*old.objects)
+        super().__init__(LENS_OB_DESCRIPTION % (self.upper.name,
+                                                self.lower.name))
 
     @property
     def upper(self):
-        return Ty(*self.objects)
+        return self._upper
 
     @property
     def lower(self):
         return self._lower
 
     def __eq__(self, other):
-        if not isinstance(other, LensTy):
+        if not isinstance(other, LensOb):
             return False
         return self.upper == other.upper and self.lower == other.lower
 
-    def tensor(self, *others):
-        for other in others:
-            if not isinstance(other, LensTy):
-                raise TypeError(messages.type_err(LensTy, other))
-        upper = self.upper.objects + [x for t in others for x in t.upper]
-        lower = self.lower.objects + [x for t in others for x in t.lower]
-        return self.upgrade(LensTy(*upper, lower=Ty(*lower)))
+    def __hash__(self):
+        return hash(repr(self))
+
+cat.Ob.__and__ = LensOb
+
+class LensTy(Ty):
+    def __init__(self, *objects):
+        assert all(isinstance(ob, LensOb) for ob in objects)
+        super().__init__(*objects)
+
+    @staticmethod
+    def named(*names):
+        return LensTy(*[LensOb(name, name + "-prime") for name in names])
+
+    @staticmethod
+    def upgrade(old):
+        return LensTy(*old.objects)
+
+    @property
+    def upper(self):
+        return reduce(lambda x, y: x @ y, [ty(ob.upper) for ob in self.objects],
+                      Ty())
+
+    @property
+    def lower(self):
+        return reduce(lambda x, y: x @ y, [ty(ob.lower) for ob in self.objects],
+                      Ty())
+
+def ty(t):
+    assert isinstance(t, cat.Ob)
+    if isinstance(t, Ty):
+        return t
+    return Ty(t)
+
+def lens_type(uppers, lowers):
+    assert isinstance(uppers, Ty) and isinstance(lowers, Ty)
+    uppers, lowers = uppers.objects, lowers.objects
+    if len(uppers) > len(lowers):
+        lowers = lowers + [PRO(0) for _ in range(len(uppers) - len(lowers))]
+    elif len(lowers) > len(uppers):
+        uppers = uppers + [PRO(0) for _ in range(len(lowers) - len(uppers))]
+
+    return LensTy(*[LensOb(u, l) for u, l in zip(uppers, lowers)])
+
+monoidal.Ty.__and__ = lens_type
 
 class LensPRO(LensTy):
     def __init__(self, n=0):
@@ -48,21 +85,11 @@ class LensPRO(LensTy):
             n = len(n)
         if isinstance(n, cat.Ob):
             n = 1
-        super().__init__(*(n * [1]), lower=PRO(n))
+        lens_ob = LensOb(cat.Ob(1), cat.Ob(1))
+        super().__init__(*(n * [lens_ob]))
 
     def __repr__(self):
         return "LensPRO({})".format(len(self))
-
-    @staticmethod
-    def upgrade(old):
-        for obj in old:
-            if obj.name != 1:
-                raise TypeError(messages.type_err(int, obj.name))
-        if isinstance(old, LensTy):
-            for obj in old.lower:
-                if obj.name != 1:
-                    raise TypeError(messages.type_err(int, obj.name))
-        return LensPRO(len(old))
 
 class LensDiagram(monoidal.Diagram):
     """
@@ -137,7 +164,7 @@ class LensBox(monoidal.Box, LensDiagram):
         assert isinstance(cod, LensTy)
         self._sample = sample
         self._update = update
-        rigid.Box.__init__(self, name, dom, cod, data=data)
+        monoidal.Box.__init__(self, name, dom, cod, data=data)
         LensDiagram.__init__(self, dom, cod, [self], [0])
 
     @property
