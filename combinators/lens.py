@@ -53,13 +53,31 @@ class LensTy(Ty):
 
     @property
     def upper(self):
-        return reduce(lambda x, y: x @ y, [ob.upper for ob in self.objects],
+        return reduce(lambda x, y: x @ y, [ty(ob.upper) for ob in self.objects],
                       Ty())
 
     @property
     def lower(self):
-        return reduce(lambda x, y: x @ y, [ob.lower for ob in self.objects],
+        return reduce(lambda x, y: x @ y, [ty(ob.lower) for ob in self.objects],
                       Ty())
+
+def ty(t):
+    assert isinstance(t, cat.Ob)
+    if isinstance(t, Ty):
+        return t
+    return Ty(t)
+
+def lens_type(uppers, lowers):
+    assert isinstance(uppers, Ty) and isinstance(lowers, Ty)
+    uppers, lowers = uppers.objects, lowers.objects
+    if len(uppers) > len(lowers):
+        lowers = lowers + [PRO(0) for _ in range(len(uppers) - len(lowers))]
+    elif len(lowers) > len(uppers):
+        uppers = uppers + [PRO(0) for _ in range(len(lowers) - len(uppers))]
+
+    return LensTy(*[LensOb(u, l) for u, l in zip(uppers, lowers)])
+
+monoidal.Ty.__and__ = lens_type
 
 class LensPRO(LensTy):
     def __init__(self, n=0):
