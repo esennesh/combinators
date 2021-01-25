@@ -298,8 +298,8 @@ class LensFunction(monoidal.Box):
     def id(dom):
         assert isinstance(dom, LensTy)
         sample = cartesian.Id(len(dom.upper))
-        update = Projection(dom.upper @ dom.lower, len(dom.upper),
-                            len(dom.lower))
+        update = cartesian.Discard(len(dom.upper)) @\
+                 cartesian.Id(len(dom.lower))
         return LensFunction('Id(%d)' % len(dom.upper), dom, dom, sample, update)
 
     @staticmethod
