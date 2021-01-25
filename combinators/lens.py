@@ -290,7 +290,10 @@ class LensFunction(monoidal.Box):
         cod = self.cod @ other.cod
 
         sample = self.sample @ other.sample
-        update = self.update @ other.update
+        update0 = cartesian.Id(len(self.dom.upper)) @\
+                  cartesian.Swap(len(other.dom.upper), len(self.cod.lower)) @\
+                  cartesian.Id(len(other.cod.lower))
+        update = update0 >> (self.update @ other.update)
         return LensFunction('%s @ %s' % (self.name, other.name), dom, cod,
                             sample, update)
 
