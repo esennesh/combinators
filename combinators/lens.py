@@ -227,11 +227,6 @@ COPY = LensBox('copy', LensPRO(1), LensPRO(2), lambda *vals: vals + vals,
 SWAP = LensBox('swap', LensPRO(2), LensPRO(2), lambda x, y: (y, x),
                lambda x, y, fby, fbx: (fbx, fby))
 
-class Projection(cartesian.Box):
-    def __init__(self, dom, start, length):
-        func = lambda *vals: vals[start:start+length]
-        super().__init__('Projection', len(dom), length, func)
-
 class LensFunction(monoidal.Box):
     def __init__(self, name, dom, cod, sample, update, **params):
         assert isinstance(dom, LensTy)
