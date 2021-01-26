@@ -56,4 +56,6 @@ class VariationalSampler(ImportanceSampler):
     def update(self, *args):
         trace = args[-1]
         self._optimizer.step()
-        return trace
+        if len(args) > 2:
+            return trace
+        return ()
