@@ -23,9 +23,9 @@ class ImportanceSampler(nn.Module):
         if args and isinstance(args[-1], dict):
             kwargs = args[-1]
             args = args[:-1]
-        args = tuple(arg.expand(*self._batch_shape, *arg.size())
+        args = tuple(utils.batch_expand(arg, self.batch_shape, True)
                      if hasattr(arg, 'expand') else arg for arg in args)
-        kwargs = {k: v.expand(*self._batch_shape, *v.size())
+        kwargs = {k: utils.batch_expand(v, self.batch_shape, True)
                      if hasattr(v, 'expand') else v for k, v in kwargs.items()}
 
         if self.proposal is not None:
