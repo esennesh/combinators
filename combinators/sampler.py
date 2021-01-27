@@ -52,10 +52,7 @@ class VariationalSampler(ImportanceSampler):
         super().__init__(target, proposal, batch_shape)
         self._optimizer = mk_optimizer(list(self.parameters()))
 
-    def update(self, *args):
-        trace = args[-1]
+    def update(self, *args, **kwargs):
         self._optimizer.step()
         self._optimizer.zero_grad()
-        if len(args) > 2:
-            return trace
-        return ()
+        return super().update(*args, **kwargs)
