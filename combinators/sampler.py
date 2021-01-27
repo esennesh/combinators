@@ -8,6 +8,7 @@ from . import utils
 class ImportanceSampler(nn.Module):
     def __init__(self, target, proposal, batch_shape=(1,)):
         super().__init__()
+        assert callable(target) and hasattr(target, 'update')
         self._batch_shape = batch_shape
         self.add_module('target', target)
         if isinstance(proposal, nn.Module):
@@ -41,18 +42,17 @@ class ImportanceSampler(nn.Module):
         assert log_weight.shape == self.batch_shape
         return result, (log_weight, p)
 
-    def update(self, args, feedback):
-        raise NotImplementedError()
+    def update(self, *args, **kwargs):
+        if hasattr(self.proposal, 'update'):
+            self.proposal.update(*args, **kwargs)
+        return self.target.update(*args, **kwargs)
 
 class VariationalSampler(ImportanceSampler):
     def __init__(self, target, proposal, mk_optimizer, batch_shape=(1,)):
         super().__init__(target, proposal, batch_shape)
         self._optimizer = mk_optimizer(list(self.parameters()))
 
-    def update(self, *args):
-        trace = args[-1]
+    def update(self, *args, **kwargs):
         self._optimizer.step()
         self._optimizer.zero_grad()
-        if len(args) > 2:
-            return trace
-        return ()
+        return super().update(*args, **kwargs)
