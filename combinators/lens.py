@@ -227,11 +227,6 @@ COPY = LensBox('copy', LensPRO(1), LensPRO(2), lambda *vals: vals + vals,
 SWAP = LensBox('swap', LensPRO(2), LensPRO(2), lambda x, y: (y, x),
                lambda x, y, fby, fbx: (fbx, fby))
 
-class Projection(cartesian.Box):
-    def __init__(self, dom, start, length):
-        func = lambda *vals: vals[start:start+length]
-        super().__init__('Projection', len(dom), length, func)
-
 class LensFunction(monoidal.Box):
     def __init__(self, name, dom, cod, sample, update, **params):
         assert isinstance(dom, LensTy)
@@ -290,7 +285,10 @@ class LensFunction(monoidal.Box):
         cod = self.cod @ other.cod
 
         sample = self.sample @ other.sample
-        update = self.update @ other.update
+        update0 = cartesian.Id(len(self.dom.upper)) @\
+                  cartesian.Swap(len(other.dom.upper), len(self.cod.lower)) @\
+                  cartesian.Id(len(other.cod.lower))
+        update = update0 >> (self.update @ other.update)
         return LensFunction('%s @ %s' % (self.name, other.name), dom, cod,
                             sample, update)
 
@@ -298,8 +296,8 @@ class LensFunction(monoidal.Box):
     def id(dom):
         assert isinstance(dom, LensTy)
         sample = cartesian.Id(len(dom.upper))
-        update = Projection(dom.upper @ dom.lower, len(dom.upper),
-                            len(dom.lower))
+        update = cartesian.Discard(len(dom.upper)) @\
+                 cartesian.Id(len(dom.lower))
         return LensFunction('Id(%d)' % len(dom.upper), dom, dom, sample, update)
 
     @staticmethod

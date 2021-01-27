@@ -175,13 +175,10 @@ def plot_evidence_bounds(bounds, lower=True, figsize=(10, 10), scale='linear'):
 
     plt.show()
 
-def batch_expand(tensor, shape):
-    if not shape:
+def batch_expand(tensor, shape, check=False):
+    if not shape or (check and tensor.shape[:len(shape)] == shape):
         return tensor
-    tensor = tensor.expand(shape[-1], *tensor.shape)
-    if len(shape) > 1:
-        return batch_expand(tensor, shape[:-1])
-    return tensor
+    return tensor.expand(*shape, *tensor.shape)
 
 def vardict_map(vdict, func):
     result = vardict()
