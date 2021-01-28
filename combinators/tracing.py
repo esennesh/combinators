@@ -143,6 +143,10 @@ class TracedFunction:
     def trace(self):
         return self._trace
 
+    def clear(self):
+        self._args = ()
+        self._trace = None
+
     def __call__(self, *vals):
         if self._args and len(self._args) == len(vals):
             cached = all(utils.tensorial_eq(a, v) for (a, v) in
