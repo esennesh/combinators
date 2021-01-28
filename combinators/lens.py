@@ -180,7 +180,7 @@ class Unit(LensBox):
         def unit(val=val):
             return val
         super().__init__('Unit(%d)' % len(cod), LensPRO(0), cod, unit,
-                         lambda fb: ())
+                         lambda *args: ())
 
 class Copy(LensDiagram):
     """
