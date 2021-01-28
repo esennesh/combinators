@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 
-from torch.distributions import Categorical
+import probtorch
+from torch.distributions import Categorical, Normal
 import torch
 import torch.nn as nn
+
+from combinators.tracing import TraceDiagram
+from combinators.utils import particle_index
 
 class GaussianClusters(nn.Module):
     def __init__(self, num_clusters, dim=2):
@@ -53,12 +57,23 @@ class SampleCluster(nn.Module):
 
         self._num_clusters = num_clusters
         self._num_samples = num_samples
-        self.register_buffer('pi', torch.ones(self._num_clusters))
+        self.register_buffer('pi', torch.ones(self._num_samples,
+                                              self._num_clusters))
 
     def forward(self, p, mus, sigmas):
-        pi = self.pi.expand(self._num_samples, self._num_clusters)
+        pi = self.pi.expand(mus.shape[0], *self.pi.shape)
         z = p.variable(Categorical, pi, name='z')
-        return mus[:, z], sigmas[:, z]
+        return particle_index(mus, z), particle_index(sigmas, z)
+
+    def update(self, p, mus, sigmas, xs):
+        def log_likelihood(k):
+            return Normal(mus[:, k], sigmas[:, k]).log_prob(xs).sum(-1)
+        log_conditionals = torch.stack([log_likelihood(k) for k
+                                        in range(mus.shape[1])], dim=-1)
+
+        q = probtorch.Trace()
+        z = q.variable(Categorical, logits=log_conditionals, name='z')
+        return (z, xs), q
 
 class SamplePoint(nn.Module):
     def forward(self, p, mu, sigma, x_observed=None):
