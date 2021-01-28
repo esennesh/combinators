@@ -109,6 +109,14 @@ def retrieve_trace(func):
 TRACING_FUNCTOR = monoidal.Functor(lambda ob: ob, retrieve_trace, ob_factory=Ty,
                                    ar_factory=TraceDiagram)
 
+def clear_tracing(func):
+    if isinstance(func.function, TracedFunction):
+        func.function.clear()
+    return TraceDiagram.UNIT(func.dom, func.cod)
+
+CLEAR_FUNCTOR = monoidal.Functor(lambda ob: ob, clear_tracing, ob_factory=Ty,
+                                 ar_factory=TraceDiagram)
+
 class TracedLensDiagram(lens.LensDiagram):
     def compile(self):
         return TRACED_SEMANTIC_FUNCTOR(self)
@@ -120,6 +128,11 @@ class TracedLensDiagram(lens.LensDiagram):
         result = semantics.sample(*vals)
         trace = TRACING_FUNCTOR(semantics.sample)
         return result, trace
+
+    @staticmethod
+    def clear(semantics):
+        CLEAR_FUNCTOR(semantics.sample)
+        return semantics
 
     def __call__(self, *vals, **kwargs):
         return TracedLensDiagram.trace(self.compile(), *vals, **kwargs)
