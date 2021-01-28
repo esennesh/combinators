@@ -15,6 +15,11 @@ from torch.nn.functional import logsigmoid, log_softmax
 
 EMPTY_TRACE = collections.defaultdict(lambda: None)
 
+def tensorial_eq(x, y):
+    if isinstance(x, torch.Tensor) and isinstance(y, torch.Tensor):
+        return (x == y).all()
+    return x == y
+
 def join_tracing_states(statex, statey, unary_concat=True):
     lwx, tx = statex
     lwy, ty = statey
