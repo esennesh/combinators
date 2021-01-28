@@ -109,6 +109,14 @@ def retrieve_trace(func):
 TRACING_FUNCTOR = monoidal.Functor(lambda ob: ob, retrieve_trace, ob_factory=Ty,
                                    ar_factory=TraceDiagram)
 
+def clear_tracing(func):
+    if isinstance(func.function, TracedFunction):
+        func.function.clear()
+    return TraceDiagram.UNIT(func.dom, func.cod)
+
+CLEAR_FUNCTOR = monoidal.Functor(lambda ob: ob, clear_tracing, ob_factory=Ty,
+                                 ar_factory=TraceDiagram)
+
 class TracedLensDiagram(lens.LensDiagram):
     def compile(self):
         return TRACED_SEMANTIC_FUNCTOR(self)
@@ -120,6 +128,11 @@ class TracedLensDiagram(lens.LensDiagram):
         result = semantics.sample(*vals)
         trace = TRACING_FUNCTOR(semantics.sample)
         return result, trace
+
+    @staticmethod
+    def clear(semantics):
+        CLEAR_FUNCTOR(semantics.sample)
+        return semantics
 
     def __call__(self, *vals, **kwargs):
         return TracedLensDiagram.trace(self.compile(), *vals, **kwargs)
@@ -137,12 +150,24 @@ class TracedFunction:
         self._name = name
         self._function = function
         self._trace = None
+        self._args = ()
 
     @property
     def trace(self):
         return self._trace
 
+    def clear(self):
+        self._args = ()
+        self._trace = None
+
     def __call__(self, *vals):
+        if self._args and len(self._args) == len(vals):
+            cached = all(utils.tensorial_eq(a, v) for (a, v) in
+                         zip(self._args, vals))
+            if cached:
+                return self._trace.box()[0]
+
+        self._args = vals
         results, (log_weight, trace) = self._function(*vals)
         self._trace = TraceDiagram.BOX(results, log_weight, trace, self._name)
         return results
