@@ -24,6 +24,29 @@ class GaussianClusters(nn.Module):
 
         return mus, sigmas
 
+    def update(self, p, zs, xs):
+        q = probtorch.Trace()
+
+        zsk = nn.functional.one_hot(zs, self._num_clusters).unsqueeze(-1)
+        xsk = xs.unsqueeze(2).expand(xs.shape[0], xs.shape[1],
+                                     self._num_clusters, xs.shape[2]) * zsk
+        nks = torch.stack([(zs == k).sum(dim=-1) + 1 for k in
+                           range(self._num_clusters)], dim=-1).unsqueeze(-1)
+        sample_means = xsk.sum(dim=1) / nks
+        sample_sqdevs = (xsk - zsk * sample_means.unsqueeze(1)) ** 2
+
+        concentration = self.concentration.unsqueeze(0) + nks / 2
+        rate = self.rate.unsqueeze(0) +\
+               sample_sqdevs.sum(dim=1) / 2 +\
+               nks * sample_means ** 2 / (2 * (nks + 1))
+        taus = q.gamma(concentration, rate, name='tau')
+
+        mean_tau = taus * (nks + 1)
+        mean_mu = nks * sample_means / (1 + nks)
+        q.normal(mean_mu, (1. / mean_tau).sqrt(), name='mu')
+
+        return (), q
+
 class SampleCluster(nn.Module):
     def __init__(self, num_clusters, num_samples):
         super().__init__()
