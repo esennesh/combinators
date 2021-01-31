@@ -58,7 +58,7 @@ class NestedTrace(Trace):
 
 @adt
 class TraceDiagram:
-    BOX: Case[tuple, torch.tensor, NestedTrace, str]
+    BOX: Case[typing.Optional[tuple], torch.tensor, NestedTrace, str]
     PRODUCT: Case[typing.List["TraceDiagram"]]
     ARROW: Case[typing.List["TraceDiagram"]]
     UNIT: Case[Ty, Ty]
