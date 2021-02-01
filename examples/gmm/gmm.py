@@ -33,7 +33,7 @@ class SampleCluster(nn.Module):
 
     def forward(self, p, mus, sigmas):
         z = p.variable(Categorical, self.pi, name='z')
-        return (mus[:, z], sigmas[:, z]), p
+        return mus[:, z], sigmas[:, z]
 
 class SamplePoint(nn.Module):
     def forward(self, p, mu, sigma, x_observed=None):
