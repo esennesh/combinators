@@ -102,7 +102,7 @@ class TraceDiagram:
         return TraceDiagram.IDENT(dom)
 
 def retrieve_trace(func):
-    if isinstance(func.function, TracedFunction):
+    if hasattr(func.function, 'trace'):
         return func.function.trace
     return TraceDiagram.UNIT(func.dom, func.cod)
 
@@ -110,7 +110,7 @@ TRACING_FUNCTOR = monoidal.Functor(lambda ob: ob, retrieve_trace, ob_factory=Ty,
                                    ar_factory=TraceDiagram)
 
 def clear_tracing(func):
-    if isinstance(func.function, TracedFunction):
+    if hasattr(func.function, 'clear'):
         func.function.clear()
     return TraceDiagram.UNIT(func.dom, func.cod)
 
