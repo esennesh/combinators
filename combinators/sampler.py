@@ -78,8 +78,8 @@ class ImportanceSampler(nn.Module):
         return result
 
 class VariationalSampler(ImportanceSampler):
-    def __init__(self, target, proposal, mk_optimizer, batch_shape=(1,)):
-        super().__init__(target, proposal, batch_shape)
+    def __init__(self, name, target, proposal, mk_optimizer, batch_shape=(1,)):
+        super().__init__(name, target, proposal, batch_shape)
         self._optimizer = mk_optimizer(list(self.parameters()))
 
     def update(self, *args, **kwargs):
