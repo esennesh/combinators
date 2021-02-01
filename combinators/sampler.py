@@ -71,6 +71,7 @@ class ImportanceSampler(nn.Module):
         self._cache.clear()
 
     def update(self, *args, **kwargs):
+        args, kwargs = self._expand_args(*args, **kwargs)
         if hasattr(self.proposal, 'update'):
             self.proposal.update(self.trace, *args, **kwargs)
         result, trace = self.target.update(self.trace, *args, **kwargs)
