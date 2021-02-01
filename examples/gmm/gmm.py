@@ -40,4 +40,4 @@ class SampleCluster(nn.Module):
 class SamplePoint(nn.Module):
     def forward(self, p, mu, sigma, x_observed=None):
         x = p.normal(mu, sigma, name='x', value=x_observed)
-        return x, p
+        return x
