@@ -25,14 +25,16 @@ class GaussianClusters(nn.Module):
         return mus, sigmas
 
 class SampleCluster(nn.Module):
-    def __init__(self, num_clusters):
+    def __init__(self, num_clusters, num_samples):
         super().__init__()
 
         self._num_clusters = num_clusters
+        self._num_samples = num_samples
         self.register_buffer('pi', torch.ones(self._num_clusters))
 
     def forward(self, p, mus, sigmas):
-        z = p.variable(Categorical, self.pi, name='z')
+        pi = self.pi.expand(self._num_samples, self._num_clusters)
+        z = p.variable(Categorical, pi, name='z')
         return mus[:, z], sigmas[:, z]
 
 class SamplePoint(nn.Module):
