@@ -20,7 +20,7 @@ class GaussianClusters(nn.Module):
         mus = p.normal(self.mu, torch.ones_like(self.mu), name='mu')
         taus = p.gamma(self.concentration, self.rate, name='tau')
 
-        return (mus, 1. / taus), p
+        return mus, 1. / taus
 
 class SampleCluster(nn.Module):
     def __init__(self, num_clusters):
