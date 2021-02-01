@@ -15,6 +15,36 @@ from torch.nn.functional import logsigmoid, log_softmax
 
 EMPTY_TRACE = collections.defaultdict(lambda: None)
 
+class TensorialCache:
+    def __init__(self, size, func):
+        self._cache = collections.deque(maxlen=size)
+        self._func = func
+
+    def __call__(self, *args, **kwargs):
+        for (c_args, c_kwargs), val in self._cache:
+            if all(tensorial_eq(c, a) for (c, a) in zip(c_args, args)) and\
+               all(tensorial_eq(c_kwargs[k], kwargs[k]) for k in kwargs):
+                return val
+
+        val = self._func(*args, **kwargs)
+        self._cache.append(((args, kwargs), val))
+        return val
+
+    def __getitem__(self, key):
+        return self._cache[key]
+
+    def __setitem__(self, key, val):
+        self._cache[key] = val
+
+    def clear(self):
+        self._cache.clear()
+
+    def __len__(self):
+        return len(self._cache)
+
+    def __bool__(self):
+        return len(self) > 0
+
 def tensorial_eq(x, y):
     if isinstance(x, torch.Tensor) and isinstance(y, torch.Tensor):
         return (x == y).all()
