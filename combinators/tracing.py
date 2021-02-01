@@ -58,7 +58,7 @@ class NestedTrace(Trace):
 
 @adt
 class TraceDiagram:
-    BOX: Case[tuple, torch.tensor, NestedTrace, str]
+    BOX: Case[typing.Optional[tuple], torch.tensor, NestedTrace, str]
     PRODUCT: Case[typing.List["TraceDiagram"]]
     ARROW: Case[typing.List["TraceDiagram"]]
     UNIT: Case[Ty, Ty]
@@ -102,7 +102,7 @@ class TraceDiagram:
         return TraceDiagram.IDENT(dom)
 
 def retrieve_trace(func):
-    if isinstance(func.function, TracedFunction):
+    if hasattr(func.function, 'trace'):
         return func.function.trace
     return TraceDiagram.UNIT(func.dom, func.cod)
 
@@ -110,7 +110,7 @@ TRACING_FUNCTOR = monoidal.Functor(lambda ob: ob, retrieve_trace, ob_factory=Ty,
                                    ar_factory=TraceDiagram)
 
 def clear_tracing(func):
-    if isinstance(func.function, TracedFunction):
+    if hasattr(func.function, 'clear'):
         func.function.clear()
     return TraceDiagram.UNIT(func.dom, func.cod)
 
@@ -174,8 +174,11 @@ class TracedFunction:
 
 class TracedLensFunction(lens.LensFunction):
     def __init__(self, name, dom, cod, sample, update):
-        sample = cartesian.Box(sample.name, sample.dom, sample.cod,
-                               TracedFunction(sample.name, sample.function))
+        if not hasattr(sample.function, 'trace'):
+            sample_func = TracedFunction(sample.name, sample.function)
+        else:
+            sample_func = sample.function
+        sample = cartesian.Box(sample.name, sample.dom, sample.cod, sample_func)
         super().__init__(name, dom, cod, sample, update)
 
     @staticmethod
