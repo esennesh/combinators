@@ -72,9 +72,16 @@ class ImportanceSampler(nn.Module):
 
     def update(self, *args, **kwargs):
         args, kwargs = self._expand_args(*args, **kwargs)
+        _, log_weight, p, name = self.trace.box()
+        q, p = utils.split_latent(p)
+
         if hasattr(self.proposal, 'update'):
-            self.proposal.update(self.trace, *args, **kwargs)
-        result, trace = self.target.update(self.trace, *args, **kwargs)
+            self.proposal.update(q, *args, **kwargs)
+        result, q = self.target.update(q, *args, **kwargs)
+        assert all(not q[k].observed for k in q)
+
+        p = utils.join_traces(q, p)
+        trace = TraceDiagram.BOX(None, log_weight, p, name)
         self._cache[0] = (self._cache[0][0], trace)
         return result
 
