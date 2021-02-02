@@ -56,7 +56,7 @@ class ImportanceSampler(nn.Module):
         result, _, p, _ = self._cache(*args, **kwargs).box()
         if result is None:
             args, kwargs = self._expand_args(*args, **kwargs)
-            self._cache[0] = self._score(p, args, kwargs)
+            self._cache[0] = ((args, kwargs), self._score(p, *args, **kwargs))
             result = self.trace.box()[0]
 
         return result
