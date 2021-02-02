@@ -146,6 +146,18 @@ def trace_map(trace, f):
         p[k] = f(trace[k])
     return p
 
+def trace_filter(trace, f):
+    p = probtorch.Trace()
+    for k, v in trace.items():
+        if f(k, v):
+            p[k] = v
+    return p
+
+def split_latent(trace):
+    latent = trace_filter(trace, lambda k, v: not v.observed)
+    observed = trace_filter(trace, lambda k, v: v.observed)
+    return latent, observed
+
 def join_traces(first, second, unary_concat=False):
     p = probtorch.Trace()
     for k, v in first.items():
