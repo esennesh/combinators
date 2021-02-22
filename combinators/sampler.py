@@ -71,6 +71,8 @@ class ImportanceSampler(nn.Module):
         self._cache.clear()
 
     def update(self, *args, **kwargs):
+        assert self.trace
+
         args, kwargs = self._expand_args(*args, **kwargs)
         _, log_weight, p, name = self.trace.box()
         q, p = utils.split_latent(p)
