@@ -13,8 +13,9 @@ class GaussianClusters(nn.Module):
 
         self.register_buffer('mu', torch.zeros(self._num_clusters, self._dim))
         self.register_buffer('concentration', torch.ones(self._num_clusters,
-                                                         self._dim))
-        self.register_buffer('rate', torch.ones(self._num_clusters, self._dim))
+                                                         self._dim) * 0.9)
+        self.register_buffer('rate',
+                             torch.ones(self._num_clusters, self._dim) * 0.9)
 
     def forward(self, p):
         taus = p.gamma(self.concentration, self.rate, name='tau')
