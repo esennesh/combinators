@@ -19,9 +19,10 @@ class GaussianClusters(nn.Module):
 
     def forward(self, p):
         taus = p.gamma(self.concentration, self.rate, name='tau')
-        mus = p.normal(self.mu, taus, name='mu')
+        sigmas = (1. / taus).sqrt()
+        mus = p.normal(self.mu, sigmas, name='mu')
 
-        return mus, (1. / taus).sqrt()
+        return mus, sigmas
 
 class SampleCluster(nn.Module):
     def __init__(self, num_clusters):
