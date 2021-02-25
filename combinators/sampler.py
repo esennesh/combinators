@@ -18,7 +18,8 @@ class ImportanceSampler(nn.Module):
         else:
             self.proposal = None
 
-        self._cache = utils.TensorialCache(1, self._sample)
+        self._trace = None
+        self._cache = utils.TensorialCache(1, self._score)
 
     @property
     def batch_shape(self):
@@ -37,7 +38,7 @@ class ImportanceSampler(nn.Module):
 
         if self.proposal is not None:
             self.proposal(q, *args, **kwargs)
-        return self._score(q, *args, **kwargs)
+        return self._cache(q, *args, **kwargs)
 
     def _score(self, q, *args, **kwargs):
         p = NestedTrace(q=q)
@@ -53,22 +54,25 @@ class ImportanceSampler(nn.Module):
             kwargs = args[-1]
             args = args[:-1]
 
-        result, _, p, _ = self._cache(*args, **kwargs).box()
-        if result is None:
+        if self.trace:
+            q = self.trace.box()[2]
+
             args, kwargs = self._expand_args(*args, **kwargs)
-            self._cache[0] = ((args, kwargs), self._score(p, *args, **kwargs))
-            result = self.trace.box()[0]
+            self._trace = self._cache(q, *args, **kwargs)
+            result, _, _, _ = self._trace.box()
+        else:
+            self._trace = self._sample(*args, **kwargs)
+            result = self._trace.box()[0]
 
         return result
 
     @property
     def trace(self):
-        if self._cache:
-            return self._cache[0][-1]
-        return None
+        return self._trace
 
     def clear(self):
         self._cache.clear()
+        self._trace = None
 
     def update(self, *args, **kwargs):
         assert self.trace
@@ -83,8 +87,7 @@ class ImportanceSampler(nn.Module):
         assert all(not q[k].observed for k in q)
 
         p = utils.join_traces(q, p)
-        trace = TraceDiagram.BOX(None, log_weight, p, name)
-        self._cache[0] = (self._cache[0][0], trace)
+        self._trace = TraceDiagram.BOX(None, log_weight, p, name)
         return result
 
 class VariationalSampler(ImportanceSampler):
