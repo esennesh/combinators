@@ -97,5 +97,9 @@ class VariationalSampler(ImportanceSampler):
 
     def update(self, *args, **kwargs):
         self._optimizer.step()
-        self._optimizer.zero_grad()
+
         return super().update(*args, **kwargs)
+
+    def clear(self):
+        self._optimizer.zero_grad()
+        super().clear()
