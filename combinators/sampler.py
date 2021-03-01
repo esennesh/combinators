@@ -81,8 +81,6 @@ class ImportanceSampler(nn.Module):
         _, log_weight, p, name = self.trace.box()
         q, p = utils.split_latent(p)
 
-        if hasattr(self.proposal, 'update'):
-            self.proposal.update(q, *args, **kwargs)
         result, q = self.target.update(q, *args, **kwargs)
         assert all(not q[k].observed for k in q)
 
