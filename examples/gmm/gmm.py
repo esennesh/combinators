@@ -8,18 +8,23 @@ import torch.nn as nn
 from combinators.utils import batch_expand, particle_index
 
 class GaussianClusters(nn.Module):
-    def __init__(self, num_clusters, dim=2):
+    def __init__(self, num_clusters, dim=2, mu=None, concentration=None,
+                 rate=None):
         super().__init__()
 
         self._num_clusters = num_clusters
         self._dim = dim
 
-        self.register_buffer('mu', torch.zeros(self._num_clusters,
-                                               self._dim))
-        self.register_buffer('concentration', torch.ones(self._num_clusters,
-                                                         self._dim) * 0.9)
-        self.register_buffer('rate',
-                             torch.ones(self._num_clusters, self._dim) * 0.9)
+        if mu is None:
+            mu = torch.zeros(self._num_clusters, self._dim)
+        if concentration is None:
+            concentration = torch.ones(self._num_clusters, self._dim) * 0.9
+        if rate is None:
+            rate = torch.ones(self._num_clusters, self._dim) * 0.9
+
+        self.register_buffer('mu', mu)
+        self.register_buffer('concentration', concentration)
+        self.register_buffer('rate', rate)
 
     def forward(self, p, batch_shape=(1,)):
         concentration = batch_expand(self.concentration, batch_shape)
