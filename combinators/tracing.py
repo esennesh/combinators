@@ -216,9 +216,3 @@ class TracedLensFunction(lens.LensFunction):
 
 TRACED_SEMANTIC_FUNCTOR = lens.LensFunctor(lambda ob: ob,
                                            TracedLensFunction.create)
-
-SAMPLE_FUNCTOR = monoidal.Functor(lambda ob: ob.upper, lambda lf: lf.sample,
-                                  ob_factory=PRO, ar_factory=cartesian.Box)
-
-UPDATE_FUNCTOR = monoidal.Functor(lambda ob: ob.upper, lambda lf: lf.update,
-                                  ob_factory=PRO, ar_factory=cartesian.Box)
