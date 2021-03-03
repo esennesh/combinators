@@ -213,6 +213,14 @@ class Swap(LensDiagram):
                    for i in range(len(right))]
         super().__init__(dom, cod, boxes, offsets)
 
+class Discard(LensDiagram):
+    def __init__(self, dom):
+        if not isinstance(dom, LensTy):
+            dom = LensPRO(dom)
+        result = Id(LensPRO(0)).tensor(*(len(dom) * [DISCARD]))
+        super().__init__(result.dom, result.cod, result.boxes, result.offsets,
+                         layers=result.layers)
+
 def _copy(ob):
     assert isinstance(ob, LensOb)
     return LensBox('copy', LensTy(ob), LensTy(ob, ob),
@@ -227,6 +235,9 @@ COPY = LensBox('copy', LensPRO(1), LensPRO(2), lambda *vals: vals + vals,
                lambda x, y, feedback: feedback)
 SWAP = LensBox('swap', LensPRO(2), LensPRO(2), lambda x, y: (y, x),
                lambda x, y, fby, fbx: (fbx, fby))
+
+DISCARD = LensBox('discard', PRO(1) & PRO(0), LensPRO(0), lambda *x: (),
+                  lambda p, *x: ((), p))
 
 class LensFunction(monoidal.Box):
     def __init__(self, name, dom, cod, sample, update, **params):
