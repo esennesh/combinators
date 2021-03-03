@@ -2,7 +2,7 @@
 
 import torch.nn as nn
 
-from .tracing import NestedTrace, TraceDiagram
+from .tracing import NestedTrace, TraceDiagram, TracedLensBox
 from . import utils
 
 class ImportanceSampler(nn.Module):
@@ -87,6 +87,10 @@ class ImportanceSampler(nn.Module):
         p = utils.join_traces(q, p)
         self._trace = TraceDiagram.BOX(None, log_weight, p, name)
         return result
+
+def importance_box(name, target, proposal, batch_shape, dom, cod):
+    sampler = ImportanceSampler(name, target, proposal, batch_shape)
+    return TracedLensBox(name, dom, cod, sampler, sampler.update)
 
 class VariationalSampler(ImportanceSampler):
     def __init__(self, name, target, proposal, mk_optimizer, batch_shape=(1,)):
