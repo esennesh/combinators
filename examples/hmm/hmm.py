@@ -1,34 +1,44 @@
 #!/usr/bin/env python3
 
 import torch
-from torch.distributions import Categorical, Dirichlet
+import torch.nn as nn
+from torch.distributions import Categorical
 from torch.nn.functional import softplus
 
 import combinators.model as model
 import combinators.utils as utils
-import examples.gmm.gmm as gmm
+from examples.gmm.gmm import GaussianClusters
 
-class InitHmm(model.Primitive):
-    def _forward(self, mu, sigma, pi0, **kwargs):
-        pi = torch.zeros(*self.batch_shape, pi0.shape[-1], pi0.shape[-1])
-        for k in range(pi0.shape[-1]):
-            pi[:, k] = self.param_sample(Dirichlet, name='Pi_%d' % (k+1))
-        z0 = self.sample(Categorical, softplus(pi[:, 0]), name='Z_0')
-        return z0, mu, sigma, pi
+class Parameters(nn.Module):
+    def __init__(self, num_states, dim=2, state_params={}):
+        super().__init__()
+        self._dim = dim
+        self._num_states = num_states
 
-class HmmStep(model.Primitive):
-    def __init__(self, *args, **kwargs):
-        super(HmmStep, self).__init__(*args, **kwargs)
-        self.gmm = gmm.Gmm(batch_shape=self.batch_shape)
+        self.states = GaussianClusters(num_states, dim=dim, **state_params)
+        self.register_parameter('pi', nn.Parameter(torch.ones(num_states)))
 
-    def _forward(self, theta, t, data={}):
-        z_prev, mu, sigma, pi = theta
-        t += 1
-        pi_prev = utils.particle_index(pi, z_prev)
+    def forward(self, p, batch_shape=(1,)):
+        mus, sigmas = self.states(p, batch_shape=batch_shape)
+        pi = utils.batch_expand(self.pi, batch_shape)
+        pi = torch.stack([p.dirichlet(pi, name='pi_%d' % (k+1)) for k
+                          in range(self._num_states)], dim=-1)
+        z0 = p.variable(Categorical, probs=pi[:, 0], name='z_0')
+        return mus, sigmas, pi, z0
 
-        (z_current, _), p, _ = self.gmm(mu, sigma, pi_prev,
-                                        latent_name='Z_%d' % t,
-                                        observable_name='X_%d' % t, data=data)
-        self.p = utils.join_traces(self.p, p['Gmm'])
+    def update(self, p):
+        return (), p
 
-        return z_current, mu, sigma, pi
+class TransitionAndEmission(nn.Module):
+    def forward(self, p, mus, sigmas, pi, z, data=None):
+        pis = utils.particle_index(pi, z)
+        zs = p.variable(Categorical, probs=pis, name='z')
+
+        mu = utils.particle_index(mus, z)
+        sigma = utils.particle_index(sigmas, z)
+        p.normal(mu, sigma, name='x', value=data)
+
+        return mus, sigmas, pi, zs
+
+    def update(self, p):
+        return (), p
