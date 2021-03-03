@@ -38,3 +38,6 @@ def iid(f, n, join=lambda x, y: x + y):
                               lens.Id(lens.LensPRO(0)))
         return copy >> fs
     return copy
+
+def sequential(f, n):
+    return functools.reduce(lambda x, y: x >> y, [f] * n, lens.Id(f.dom))
