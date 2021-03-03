@@ -190,12 +190,13 @@ class Copy(LensDiagram):
     def __init__(self, dom):
         if not isinstance(dom, LensTy):
             dom = LensPRO(dom)
-        result = Id(0)
+        tensor_id = Id(LensPRO(0))
+        result = tensor_id
         for ob in dom:
             result = result @ _copy(ob)
         for i in range(1, len(dom)):
-            swaps = Id(0).tensor(*[_swap(dom[k], dom[k+i]) for k in
-                                   range(len(dom) - i)])
+            swaps = tensor_id.tensor(*[_swap(dom[k], dom[k+i]) for k in
+                                       range(len(dom) - i)])
             result = result >> Id(dom[:i]) @ swaps @ Id(dom[-i:])
         super().__init__(dom, dom @ dom, result.boxes, result.offsets,
                          layers=result.layers)
