@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 
 import collections
-import flatdict
 from functools import reduce
-import pygtrie
 
 from matplotlib.patches import Ellipse
 import matplotlib.pyplot as plt
@@ -13,7 +11,7 @@ from probtorch.util import log_mean_exp, log_sum_exp
 import torch
 from torch.distributions import Gumbel
 import torch.nn as nn
-from torch.nn.functional import logsigmoid, log_softmax
+from torch.nn.functional import log_softmax
 
 EMPTY_TRACE = collections.defaultdict(lambda: None)
 
@@ -127,11 +125,6 @@ def batch_collapse(tensor, shape):
 
 def particle_matmul(matrices, vectors):
     return torch.bmm(matrices, vectors.unsqueeze(-1)).squeeze(-1)
-
-def iter_trie_slice(trie, prefix=pygtrie._SENTINEL):
-    for key in trie.iterkeys(prefix=prefix):
-        hdr = prefix + '/' if prefix != pygtrie._SENTINEL else ''
-        yield hdr + key
 
 def slice_trace(trace, key, forwards=True):
     result = probtorch.Trace()
@@ -299,13 +292,6 @@ def map_tensors(f, *args):
             yield f(arg)
         else:
             yield arg
-
-def vardict(existing=None, to=()):
-    vdict = flatdict.FlatDict(delimiter='__')
-    if existing:
-        for k, v in existing.items():
-            vdict[k] = batch_expand(v, to) if to else v
-    return vdict
 
 def vardict_keys(vdict):
     first_level = [k.rsplit('__', 1)[0] for k in vdict.keys()]
