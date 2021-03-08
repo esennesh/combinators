@@ -117,6 +117,7 @@ def clear_tracing(func):
 CLEAR_FUNCTOR = monoidal.Functor(lambda ob: ob, clear_tracing, ob_factory=Ty,
                                  ar_factory=TraceDiagram)
 
+@monoidal.Diagram.subclass
 class TracedLensDiagram(lens.LensDiagram):
     def compile(self):
         return TRACED_SEMANTIC_FUNCTOR(self)
@@ -136,11 +137,6 @@ class TracedLensDiagram(lens.LensDiagram):
 
     def __call__(self, *vals, **kwargs):
         return TracedLensDiagram.trace(self.compile(), *vals, **kwargs)
-
-    @staticmethod
-    def upgrade(old):
-        return TracedLensDiagram(old.dom, old.cod, old.boxes, old.offsets,
-                                 old.layers)
 
 class TracedLensBox(lens.LensBox, TracedLensDiagram):
     pass
