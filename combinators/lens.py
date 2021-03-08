@@ -91,6 +91,7 @@ class LensPRO(LensTy):
     def __repr__(self):
         return "LensPRO({})".format(len(self))
 
+@monoidal.Diagram.subclass
 class LensDiagram(monoidal.Diagram):
     """
     Implements diagrams of lenses composed of Python functions
@@ -120,10 +121,6 @@ class LensDiagram(monoidal.Diagram):
             vals = vals + (kwargs,)
         semantics = self.compile()
         return semantics.update(*vals)
-
-    @staticmethod
-    def upgrade(old):
-        return LensDiagram(old.dom, old.cod, old.boxes, old.offsets, old.layers)
 
     @staticmethod
     def id(dom):
