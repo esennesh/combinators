@@ -153,6 +153,10 @@ class Id(LensDiagram):
 
 class LensFunctor(monoidal.Functor):
     def __init__(self, ob, ar):
+        super().__init__(ob, ar, ob_factory=LensTy, ar_factory=LensDiagram)
+
+class LensFunctionFunctor(monoidal.Functor):
+    def __init__(self, ob, ar):
         super().__init__(ob, ar, ob_factory=LensTy, ar_factory=LensFunction)
 
 class LensBox(monoidal.Box, LensDiagram):
@@ -318,4 +322,4 @@ class LensFunction(monoidal.Box):
                                len(box.dom.lower), box.update)
         return LensFunction(box.name, box.dom, box.cod, sample, update)
 
-SEMANTIC_FUNCTOR = LensFunctor(lambda lob: lob, LensFunction.create)
+SEMANTIC_FUNCTOR = LensFunctionFunctor(lambda lob: lob, LensFunction.create)
