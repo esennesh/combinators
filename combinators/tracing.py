@@ -138,6 +138,35 @@ class TracedLensDiagram(lens.LensDiagram):
     def __call__(self, *vals, **kwargs):
         return TracedLensDiagram.trace(self.compile(), *vals, **kwargs)
 
+    @staticmethod
+    def id(dom):
+        return Id(dom)
+
+class Id(TracedLensDiagram):
+    """
+    Implements identity diagrams on dom inputs.
+    """
+    def __init__(self, dom):
+        """
+        >>> assert Diagram.id(42) == Id(42) == Diagram(42, 42, [], [])
+        """
+        assert isinstance(dom, lens.LensTy)
+        super().__init__(dom, dom, [], [], layers=None)
+
+    def __repr__(self):
+        """
+        >>> Id(42)
+        Id(42)
+        """
+        return "Id({})".format(self.dom)
+
+    def __str__(self):
+        """
+        >>> print(Id(42))
+        Id(42)
+        """
+        return repr(self)
+
 class TracedLensBox(lens.LensBox, TracedLensDiagram):
     pass
 
