@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 
 from combinators.tracing import TraceDiagram
-from combinators.utils import particle_index
+from combinators.utils import batch_expand, particle_index
 
 class GaussianClusters(nn.Module):
     def __init__(self, num_clusters, dim=2):
@@ -22,10 +22,13 @@ class GaussianClusters(nn.Module):
         self.register_buffer('rate',
                              torch.ones(1, self._num_clusters, self._dim) * 0.9)
 
-    def forward(self, p):
-        taus = p.gamma(self.concentration, self.rate, name='tau')
+    def forward(self, p, batch_shape=(1,)):
+        concentration = batch_expand(self.concentration, batch_shape)
+        rate = batch_expand(self.rate, batch_shape)
+        taus = p.gamma(concentration, rate, name='tau')
         sigmas = (1. / taus).sqrt()
-        mus = p.normal(self.mu, sigmas, name='mu')
+        mu = batch_expand(self.mu, batch_shape)
+        mus = p.normal(mu, sigmas, name='mu')
 
         return mus, sigmas
 
