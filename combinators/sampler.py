@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import inspect
 import torch.nn as nn
 
 from .tracing import NestedTrace, TraceDiagram, TracedLensBox
@@ -13,13 +14,19 @@ class ImportanceSampler(nn.Module):
         self._name = name
 
         self.add_module('target', target)
+        sig = inspect.signature(target.forward)
+        target_batching = 'batch_shape' in sig.parameters
         if isinstance(proposal, nn.Module):
             self.add_module('proposal', proposal)
+            sig = inspect.signature(proposal.forward)
+            proposal_batching = 'batch_shape' in sig.parameters
         else:
             self.proposal = None
+            proposal_batching = False
 
         self._trace = None
         self._cache = utils.TensorialCache(1, self._score)
+        self._pass_batch_shape = target_batching or proposal_batching
 
     @property
     def batch_shape(self):
@@ -53,6 +60,8 @@ class ImportanceSampler(nn.Module):
         if args and isinstance(args[-1], dict):
             kwargs = args[-1]
             args = args[:-1]
+        if self._pass_batch_shape:
+            kwargs['batch_shape'] = self.batch_shape
 
         if self.trace:
             q = self.trace.box()[2]
