@@ -1,28 +1,30 @@
 #!/usr/bin/env python3
 
 import inspect
-import torch.nn as nn
+import torch
 
 from .tracing import NestedTrace, TraceDiagram, TracedLensBox
 from . import utils
 
-class ImportanceSampler(nn.Module):
+class ImportanceSampler:
     def __init__(self, name, target, proposal, batch_shape=(1,)):
         super().__init__()
         assert callable(target) and hasattr(target, 'update')
         self._batch_shape = batch_shape
         self._name = name
 
-        self.add_module('target', target)
+        self.target = target
         sig = inspect.signature(target.forward)
         target_batching = 'batch_shape' in sig.parameters
-        if isinstance(proposal, nn.Module):
-            self.add_module('proposal', proposal)
-            sig = inspect.signature(proposal.forward)
+
+        self.proposal = proposal
+        proposal_batching = False
+        if isinstance(self.proposal, torch.nn.Module):
+            sig = inspect.signature(self.proposal.forward)
             proposal_batching = 'batch_shape' in sig.parameters
-        else:
-            self.proposal = None
-            proposal_batching = False
+        elif callable(self.proposal):
+            sig = inspect.signature(self.proposal)
+            proposal_batching = 'batch_shape' in sig.parameters
 
         self._trace = None
         self._cache = utils.TensorialCache(1, self._score)
@@ -56,7 +58,7 @@ class ImportanceSampler(nn.Module):
 
         return TraceDiagram.BOX(result, log_weight, p, self._name)
 
-    def forward(self, *args, **kwargs):
+    def __call__(self, *args, **kwargs):
         if args and isinstance(args[-1], dict):
             kwargs = {**args[-1], **kwargs}
             args = args[:-1]
