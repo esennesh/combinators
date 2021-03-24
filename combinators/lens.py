@@ -245,8 +245,17 @@ class LensFunction(monoidal.Box):
         assert isinstance(dom, LensTy)
         assert isinstance(cod, LensTy)
 
-        self._sample = sample
-        self._update = update
+        if isinstance(sample, cartesian.Diagram):
+            self._sample = sample
+        else:
+            self._sample = cartesian.Box(name + '_sample', len(dom.upper),
+                                         len(cod.upper), sample)
+        if isinstance(update, cartesian.Diagram):
+            self._update = update
+        else:
+            self._update = cartesian.Box(name + '_update',
+                                         len(dom.upper @ cod.lower),
+                                         len(dom.lower), update)
 
         super().__init__(name, dom, cod, **params)
 
@@ -314,17 +323,7 @@ class LensFunction(monoidal.Box):
         return LensFunction('Id(%d)' % len(dom.upper), dom, dom, sample, update)
 
     @staticmethod
-    def morphisms(box):
-        sample = cartesian.Box(box.name + '_sample', len(box.dom.upper),
-                               len(box.cod.upper), box.sample)
-        update = cartesian.Box(box.name + '_update',
-                               len(box.dom.upper @ box.cod.lower),
-                               len(box.dom.lower), box.update)
-        return sample, update
-
-    @staticmethod
     def create(box):
-        sample, update = LensFunction.morphisms(box)
-        return LensFunction(box.name, box.dom, box.cod, sample, update)
+        return LensFunction(box.name, box.dom, box.cod, box.sample, box.update)
 
 SEMANTIC_FUNCTOR = LensFunctionFunctor(lambda lob: lob, LensFunction.create)
