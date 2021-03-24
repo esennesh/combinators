@@ -15,12 +15,12 @@ class GaussianClusters(nn.Module):
         self._num_clusters = num_clusters
         self._dim = dim
 
-        self.register_buffer('mu', torch.zeros(1, self._num_clusters,
+        self.register_buffer('mu', torch.zeros(self._num_clusters,
                                                self._dim))
-        self.register_buffer('concentration', torch.ones(1, self._num_clusters,
+        self.register_buffer('concentration', torch.ones(self._num_clusters,
                                                          self._dim) * 0.9)
         self.register_buffer('rate',
-                             torch.ones(1, self._num_clusters, self._dim) * 0.9)
+                             torch.ones(self._num_clusters, self._dim) * 0.9)
 
     def forward(self, p, batch_shape=(1,)):
         concentration = batch_expand(self.concentration, batch_shape)
