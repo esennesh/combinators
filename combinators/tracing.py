@@ -205,14 +205,6 @@ class TracedFunction:
         return results
 
 class TracedLensFunction(lens.LensFunction):
-    def __init__(self, name, dom, cod, sample, update):
-        if not hasattr(sample.function, 'trace'):
-            sample_func = TracedFunction(sample.name, sample.function)
-        else:
-            sample_func = sample.function
-        sample = cartesian.Box(sample.name, sample.dom, sample.cod, sample_func)
-        super().__init__(name, dom, cod, sample, update)
-
     @staticmethod
     def create(box):
         if isinstance(box, TracedLensBox):
