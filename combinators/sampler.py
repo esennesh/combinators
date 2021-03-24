@@ -31,6 +31,9 @@ class ImportanceSampler:
         self._cache = utils.TensorialCache(1, self._score)
         self._pass_batch_shape = target_batching or proposal_batching
 
+    def condition(self, data):
+        self._data = data
+
     @property
     def batch_shape(self):
         return self._batch_shape
