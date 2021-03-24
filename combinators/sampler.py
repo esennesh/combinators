@@ -107,8 +107,8 @@ class ImportanceSampler:
         self._trace = TraceDiagram.BOX(None, log_weight, p, name)
         return result
 
-def importance_box(name, target, proposal, batch_shape, dom, cod):
-    sampler = ImportanceSampler(name, target, proposal, batch_shape)
+def importance_box(name, target, proposal, batch_shape, dom, cod, data=None):
+    sampler = ImportanceSampler(name, target, proposal, batch_shape, data)
     return TracedLensBox(name, dom, cod, sampler, sampler.update)
 
 class VariationalSampler(ImportanceSampler):
