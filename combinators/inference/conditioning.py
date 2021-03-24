@@ -2,14 +2,14 @@
 
 import collections
 
-from .. import lens, sampler
+from .. import lens, tracing
 
 class SequentialConditioner(lens.LensFunctor):
-    def __init__(self, *vals):
+    def __init__(self, **vals):
         super().__init__(lambda lob: lob, self._condition)
-        self._vals = collections.deque(vals)
+        self._boxes = {k: collections.deque(v) for k, v in vals.items()}
 
     def _condition(self, box):
-        if isinstance(box.sample, sampler.ImportanceSampler):
-            box.sample.condition(self._vals.popleft())
+        if isinstance(box, tracing.TracedLensBox) and box.name in self._boxes:
+            return box.conditioned(self._boxes[box.name].popleft())
         return box
