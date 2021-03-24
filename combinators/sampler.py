@@ -112,8 +112,9 @@ def importance_box(name, target, proposal, batch_shape, dom, cod, data=None):
     return TracedLensBox(name, dom, cod, sampler, sampler.update)
 
 class VariationalSampler(ImportanceSampler):
-    def __init__(self, name, target, proposal, mk_optimizer, batch_shape=(1,)):
-        super().__init__(name, target, proposal, batch_shape)
+    def __init__(self, name, target, proposal, mk_optimizer, batch_shape=(1,),
+                 data=None):
+        super().__init__(name, target, proposal, batch_shape, data)
         self._optimizer = mk_optimizer(list(self.parameters()))
 
     def update(self, *args, **kwargs):
