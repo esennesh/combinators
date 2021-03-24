@@ -7,11 +7,12 @@ from .tracing import NestedTrace, TraceDiagram, TracedLensBox
 from . import utils
 
 class ImportanceSampler:
-    def __init__(self, name, target, proposal, batch_shape=(1,)):
+    def __init__(self, name, target, proposal, batch_shape=(1,), data=None):
         super().__init__()
         assert callable(target) and hasattr(target, 'update')
         self._batch_shape = batch_shape
         self._name = name
+        self._data = data
 
         self.target = target
         sig = inspect.signature(target.forward)
@@ -64,6 +65,8 @@ class ImportanceSampler:
             args = args[:-1]
         if self._pass_batch_shape:
             kwargs['batch_shape'] = self.batch_shape
+        if self._data is not None:
+            kwargs['data'] = self._data
 
         if self.trace:
             q = self.trace.box()[2]
@@ -87,6 +90,8 @@ class ImportanceSampler:
 
     def update(self, *args, **kwargs):
         assert self.trace
+        if self._data is not None:
+            kwargs['data'] = self._data
 
         args, kwargs = self._expand_args(*args, **kwargs)
         _, log_weight, p, name = self.trace.box()
