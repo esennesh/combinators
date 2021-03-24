@@ -314,12 +314,17 @@ class LensFunction(monoidal.Box):
         return LensFunction('Id(%d)' % len(dom.upper), dom, dom, sample, update)
 
     @staticmethod
-    def create(box):
+    def morphisms(box):
         sample = cartesian.Box(box.name + '_sample', len(box.dom.upper),
                                len(box.cod.upper), box.sample)
         update = cartesian.Box(box.name + '_update',
                                len(box.dom.upper @ box.cod.lower),
                                len(box.dom.lower), box.update)
+        return sample, update
+
+    @staticmethod
+    def create(box):
+        sample, update = LensFunction.morphisms(box)
         return LensFunction(box.name, box.dom, box.cod, sample, update)
 
 SEMANTIC_FUNCTOR = LensFunctionFunctor(lambda lob: lob, LensFunction.create)
