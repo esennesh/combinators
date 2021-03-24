@@ -167,6 +167,11 @@ class Id(TracedLensDiagram):
         """
         return repr(self)
 
+class TracedLensFunctor(monoidal.Functor):
+    def __init__(self, ob, ar):
+        super().__init__(ob, ar, ob_factory=lens.LensTy,
+                         ar_factory=TracedLensDiagram)
+
 class TracedLensBox(lens.LensBox, TracedLensDiagram):
     pass
 
@@ -214,11 +219,5 @@ class TracedLensFunction(lens.LensFunction):
                                       base.update)
         return base
 
-TRACED_SEMANTIC_FUNCTOR = lens.LensFunctor(lambda ob: ob,
-                                           TracedLensFunction.create)
-
-SAMPLE_FUNCTOR = monoidal.Functor(lambda ob: ob.upper, lambda lf: lf.sample,
-                                  ob_factory=PRO, ar_factory=cartesian.Box)
-
-UPDATE_FUNCTOR = monoidal.Functor(lambda ob: ob.upper, lambda lf: lf.update,
-                                  ob_factory=PRO, ar_factory=cartesian.Box)
+TRACED_SEMANTIC_FUNCTOR = lens.LensFunctionFunctor(lambda ob: ob,
+                                                   TracedLensFunction.create)
