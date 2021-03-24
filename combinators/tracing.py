@@ -117,6 +117,7 @@ def clear_tracing(func):
 CLEAR_FUNCTOR = monoidal.Functor(lambda ob: ob, clear_tracing, ob_factory=Ty,
                                  ar_factory=TraceDiagram)
 
+@monoidal.Diagram.subclass
 class TracedLensDiagram(lens.LensDiagram):
     def compile(self):
         return TRACED_SEMANTIC_FUNCTOR(self)
@@ -138,9 +139,33 @@ class TracedLensDiagram(lens.LensDiagram):
         return TracedLensDiagram.trace(self.compile(), *vals, **kwargs)
 
     @staticmethod
-    def upgrade(old):
-        return TracedLensDiagram(old.dom, old.cod, old.boxes, old.offsets,
-                                 old.layers)
+    def id(dom):
+        return Id(dom)
+
+class Id(TracedLensDiagram):
+    """
+    Implements identity diagrams on dom inputs.
+    """
+    def __init__(self, dom):
+        """
+        >>> assert Diagram.id(42) == Id(42) == Diagram(42, 42, [], [])
+        """
+        assert isinstance(dom, lens.LensTy)
+        super().__init__(dom, dom, [], [], layers=None)
+
+    def __repr__(self):
+        """
+        >>> Id(42)
+        Id(42)
+        """
+        return "Id({})".format(self.dom)
+
+    def __str__(self):
+        """
+        >>> print(Id(42))
+        Id(42)
+        """
+        return repr(self)
 
 class TracedLensBox(lens.LensBox, TracedLensDiagram):
     pass
