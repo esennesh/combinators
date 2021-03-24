@@ -205,6 +205,48 @@ class TracedFunction:
         return results
 
 class TracedLensFunction(lens.LensFunction):
+    def __init__(self, name, dom, cod, sample, update, **kwargs):
+        self._sample_func = sample
+        self._update_func = update
+        self._trace = None
+        super().__init__(name, dom, cod, self._traced_sample,
+                         self._traced_update, **kwargs)
+
+    @property
+    def trace(self):
+        return self._trace
+
+    def clear(self):
+        self._trace = None
+
+    def _traced_sample(self, *args, **kwargs):
+        if self.data is not None:
+            kwargs['data'] = self.data
+
+        q = self.trace.box()[2] if self.trace else None
+        result, log_weight, p = self._sample_func(q, *args, **kwargs)
+        self._trace = TraceDiagram.BOX(result, log_weight, p, self.name)
+
+        return result
+
+    def _traced_update(self, *args, **kwargs):
+        if self.data is not None:
+            kwargs['data'] = self.data
+
+        if self.trace:
+            _, log_weight, p, _ = self.trace.box()
+            q, p = utils.split_latent(p)
+        else:
+            q, p = None, {}
+            log_weight = 0.
+
+        result, q = self._update_func(q, *args, **kwargs)
+        assert all(not q[k].observed for k in q)
+
+        p = utils.join_traces(q, p)
+        self._trace = TraceDiagram.BOX(None, log_weight, p, self.name)
+        return result
+
     @staticmethod
     def create(box):
         if isinstance(box, TracedLensBox):
