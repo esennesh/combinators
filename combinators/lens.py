@@ -160,7 +160,7 @@ class LensFunctionFunctor(monoidal.Functor):
         super().__init__(ob, ar, ob_factory=LensTy, ar_factory=LensFunction)
 
 class LensBox(monoidal.Box, LensDiagram):
-    def __init__(self, name, dom, cod, sample, update, data={}):
+    def __init__(self, name, dom, cod, sample, update, data=None):
         assert isinstance(dom, LensTy)
         assert isinstance(cod, LensTy)
         self._sample = sample
