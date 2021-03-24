@@ -58,7 +58,7 @@ class ImportanceSampler(nn.Module):
 
     def forward(self, *args, **kwargs):
         if args and isinstance(args[-1], dict):
-            kwargs = args[-1]
+            kwargs = {**args[-1], **kwargs}
             args = args[:-1]
         if self._pass_batch_shape:
             kwargs['batch_shape'] = self.batch_shape
