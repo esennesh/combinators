@@ -324,6 +324,7 @@ class LensFunction(monoidal.Box):
 
     @staticmethod
     def create(box):
-        return LensFunction(box.name, box.dom, box.cod, box.sample, box.update)
+        return LensFunction(box.name, box.dom, box.cod, box.sample, box.update,
+                            data=box.data)
 
 SEMANTIC_FUNCTOR = LensFunctionFunctor(lambda lob: lob, LensFunction.create)
