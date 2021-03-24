@@ -1,32 +1,38 @@
 #!/usr/bin/env python3
 
 import inspect
-import torch.nn as nn
+import torch
 
 from .tracing import NestedTrace, TraceDiagram, TracedLensBox
 from . import utils
 
-class ImportanceSampler(nn.Module):
-    def __init__(self, name, target, proposal, batch_shape=(1,)):
+class ImportanceSampler:
+    def __init__(self, name, target, proposal, batch_shape=(1,), data=None):
         super().__init__()
         assert callable(target) and hasattr(target, 'update')
         self._batch_shape = batch_shape
         self._name = name
+        self._data = data
 
-        self.add_module('target', target)
+        self.target = target
         sig = inspect.signature(target.forward)
         target_batching = 'batch_shape' in sig.parameters
-        if isinstance(proposal, nn.Module):
-            self.add_module('proposal', proposal)
-            sig = inspect.signature(proposal.forward)
+
+        self.proposal = proposal
+        proposal_batching = False
+        if isinstance(self.proposal, torch.nn.Module):
+            sig = inspect.signature(self.proposal.forward)
             proposal_batching = 'batch_shape' in sig.parameters
-        else:
-            self.proposal = None
-            proposal_batching = False
+        elif callable(self.proposal):
+            sig = inspect.signature(self.proposal)
+            proposal_batching = 'batch_shape' in sig.parameters
 
         self._trace = None
         self._cache = utils.TensorialCache(1, self._score)
         self._pass_batch_shape = target_batching or proposal_batching
+
+    def condition(self, data):
+        self._data = data
 
     @property
     def batch_shape(self):
@@ -56,12 +62,14 @@ class ImportanceSampler(nn.Module):
 
         return TraceDiagram.BOX(result, log_weight, p, self._name)
 
-    def forward(self, *args, **kwargs):
+    def __call__(self, *args, **kwargs):
         if args and isinstance(args[-1], dict):
-            kwargs = args[-1]
+            kwargs = {**args[-1], **kwargs}
             args = args[:-1]
         if self._pass_batch_shape:
             kwargs['batch_shape'] = self.batch_shape
+        if self._data is not None:
+            kwargs['data'] = self._data
 
         if self.trace:
             q = self.trace.box()[2]
@@ -85,6 +93,8 @@ class ImportanceSampler(nn.Module):
 
     def update(self, *args, **kwargs):
         assert self.trace
+        if self._data is not None:
+            kwargs['data'] = self._data
 
         args, kwargs = self._expand_args(*args, **kwargs)
         _, log_weight, p, name = self.trace.box()
@@ -97,13 +107,14 @@ class ImportanceSampler(nn.Module):
         self._trace = TraceDiagram.BOX(None, log_weight, p, name)
         return result
 
-def importance_box(name, target, proposal, batch_shape, dom, cod):
-    sampler = ImportanceSampler(name, target, proposal, batch_shape)
+def importance_box(name, target, proposal, batch_shape, dom, cod, data=None):
+    sampler = ImportanceSampler(name, target, proposal, batch_shape, data)
     return TracedLensBox(name, dom, cod, sampler, sampler.update)
 
 class VariationalSampler(ImportanceSampler):
-    def __init__(self, name, target, proposal, mk_optimizer, batch_shape=(1,)):
-        super().__init__(name, target, proposal, batch_shape)
+    def __init__(self, name, target, proposal, mk_optimizer, batch_shape=(1,),
+                 data=None):
+        super().__init__(name, target, proposal, batch_shape, data)
         self._optimizer = mk_optimizer(list(self.parameters()))
 
     def update(self, *args, **kwargs):
