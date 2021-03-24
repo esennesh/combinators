@@ -209,7 +209,7 @@ class TracedLensFunction(lens.LensFunction):
     def create(box):
         if isinstance(box, TracedLensBox):
             return TracedLensFunction(box.name, box.dom, box.cod, box.sample,
-                                      box.update)
+                                      box.update, data=box.data)
         return lens.LensFunction.create(box)
 
 TRACED_SEMANTIC_FUNCTOR = lens.LensFunctionFunctor(lambda ob: ob,
