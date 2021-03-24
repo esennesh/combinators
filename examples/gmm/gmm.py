@@ -79,9 +79,9 @@ class SampleCluster(nn.Module):
         return (z, xs), q
 
 class SamplePoint(nn.Module):
-    def forward(self, p, mu, sigma, x_observed=None):
-        x = p.normal(mu, sigma, name='x', value=x_observed)
+    def forward(self, p, mu, sigma, data=None):
+        x = p.normal(mu, sigma, name='x', value=data)
         return x
 
-    def update(self, p, mu, sigma, xs):
-        return xs, p
+    def update(self, p, mu, sigma, data):
+        return data, p
