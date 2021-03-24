@@ -7,12 +7,10 @@ from .tracing import NestedTrace, TraceDiagram, TracedLensBox
 from . import utils
 
 class ImportanceSampler:
-    def __init__(self, name, target, proposal, batch_shape=(1,), data=None):
+    def __init__(self, target, proposal, batch_shape=(1,)):
         super().__init__()
         assert callable(target) and hasattr(target, 'update')
         self._batch_shape = batch_shape
-        self._name = name
-        self._data = data
 
         self.target = target
         sig = inspect.signature(target.forward)
@@ -27,12 +25,8 @@ class ImportanceSampler:
             sig = inspect.signature(self.proposal)
             proposal_batching = 'batch_shape' in sig.parameters
 
-        self._trace = None
         self._cache = utils.TensorialCache(1, self._score)
         self._pass_batch_shape = target_batching or proposal_batching
-
-    def condition(self, data):
-        self._data = data
 
     @property
     def batch_shape(self):
@@ -60,52 +54,26 @@ class ImportanceSampler:
         log_weight = p.conditioning_factor(self.batch_shape)
         assert log_weight.shape == self.batch_shape
 
-        return TraceDiagram.BOX(result, log_weight, p, self._name)
+        return result, log_weight, p
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, q, *args, **kwargs):
         if args and isinstance(args[-1], dict):
             kwargs = {**args[-1], **kwargs}
             args = args[:-1]
         if self._pass_batch_shape:
             kwargs['batch_shape'] = self.batch_shape
-        if self._data is not None:
-            kwargs['data'] = self._data
 
-        if self.trace:
-            q = self.trace.box()[2]
-
+        if q:
             args, kwargs = self._expand_args(*args, **kwargs)
-            self._trace = self._cache(q, *args, **kwargs)
-            result, _, _, _ = self._trace.box()
-        else:
-            self._trace = self._sample(*args, **kwargs)
-            result = self._trace.box()[0]
-
-        return result
-
-    @property
-    def trace(self):
-        return self._trace
+            return self._cache(q, *args, **kwargs)
+        return self._sample(*args, **kwargs)
 
     def clear(self):
         self._cache.clear()
-        self._trace = None
 
-    def update(self, *args, **kwargs):
-        assert self.trace
-        if self._data is not None:
-            kwargs['data'] = self._data
-
+    def update(self, q, *args, **kwargs):
         args, kwargs = self._expand_args(*args, **kwargs)
-        _, log_weight, p, name = self.trace.box()
-        q, p = utils.split_latent(p)
-
-        result, q = self.target.update(q, *args, **kwargs)
-        assert all(not q[k].observed for k in q)
-
-        p = utils.join_traces(q, p)
-        self._trace = TraceDiagram.BOX(None, log_weight, p, name)
-        return result
+        return self.target.update(q, *args, **kwargs)
 
 def importance_box(name, target, proposal, batch_shape, dom, cod, data=None):
     sampler = ImportanceSampler(name, target, proposal, batch_shape, data)
