@@ -216,9 +216,8 @@ class TracedLensFunction(lens.LensFunction):
     @staticmethod
     def create(box):
         if isinstance(box, TracedLensBox):
-            sample, update = TracedLensFunction.morphisms(box)
-            return TracedLensFunction(box.name, box.dom, box.cod, sample,
-                                      update)
+            return TracedLensFunction(box.name, box.dom, box.cod, box.sample,
+                                      box.update)
         return lens.LensFunction.create(box)
 
 TRACED_SEMANTIC_FUNCTOR = lens.LensFunctionFunctor(lambda ob: ob,
