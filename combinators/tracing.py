@@ -102,16 +102,18 @@ class TraceDiagram:
         return TraceDiagram.IDENT(dom)
 
 def retrieve_trace(func):
-    if hasattr(func.function, 'trace'):
-        return func.function.trace
+    if func.data and 'tracer' in func.data:
+        tracer = func.data['tracer']()
+        return tracer.trace
     return TraceDiagram.UNIT(func.dom, func.cod)
 
 TRACING_FUNCTOR = monoidal.Functor(lambda ob: ob, retrieve_trace, ob_factory=Ty,
                                    ar_factory=TraceDiagram)
 
 def clear_tracing(func):
-    if hasattr(func.function, 'clear'):
-        func.function.clear()
+    if func.data and 'tracer' in func.data:
+        tracer = func.data['tracer']()
+        tracer.clear()
     return TraceDiagram.UNIT(func.dom, func.cod)
 
 CLEAR_FUNCTOR = monoidal.Functor(lambda ob: ob, clear_tracing, ob_factory=Ty,
@@ -209,8 +211,14 @@ class TracedLensFunction(lens.LensFunction):
         self._sample_func = sample
         self._update_func = update
         self._trace = None
-        super().__init__(name, dom, cod, self._traced_sample,
-                         self._traced_update, **kwargs)
+        traced_sample = cartesian.Box(name + '_sample', len(dom.upper),
+                                      len(cod.upper), self._traced_sample,
+                                      data={'tracer': lambda: self})
+        traced_update = cartesian.Box(name + '_update',
+                                      len(dom.upper @ cod.lower),
+                                      len(dom.lower), self._traced_update,
+                                      data={'tracer': lambda: self})
+        super().__init__(name, dom, cod, traced_sample, traced_update, **kwargs)
 
     @property
     def trace(self):
