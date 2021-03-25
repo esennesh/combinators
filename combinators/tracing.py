@@ -173,7 +173,9 @@ class TracedLensFunctor(monoidal.Functor):
                          ar_factory=TracedLensDiagram)
 
 class TracedLensBox(lens.LensBox, TracedLensDiagram):
-    pass
+    def conditioned(self, data=None):
+        return TracedLensBox(self.name, self.dom, self.cod, self.sample,
+                             self.update, data=data)
 
 class TracedFunction:
     def __init__(self, name, function):
