@@ -179,33 +179,6 @@ class TracedLensBox(lens.LensBox, TracedLensDiagram):
         return TracedLensBox(self.name, self.dom, self.cod, self.sample,
                              self.update, data=data)
 
-class TracedFunction:
-    def __init__(self, name, function):
-        self._name = name
-        self._function = function
-        self._trace = None
-        self._args = ()
-
-    @property
-    def trace(self):
-        return self._trace
-
-    def clear(self):
-        self._args = ()
-        self._trace = None
-
-    def __call__(self, *vals):
-        if self._args and len(self._args) == len(vals):
-            cached = all(utils.tensorial_eq(a, v) for (a, v) in
-                         zip(self._args, vals))
-            if cached:
-                return self._trace.box()[0]
-
-        self._args = vals
-        results, (log_weight, trace) = self._function(*vals)
-        self._trace = TraceDiagram.BOX(results, log_weight, trace, self._name)
-        return results
-
 class TracedLensFunction(lens.LensFunction):
     def __init__(self, name, dom, cod, sample, update, **kwargs):
         self._sample_func = sample
