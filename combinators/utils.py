@@ -21,20 +21,39 @@ class TensorialCache:
         self._func = func
 
     def __call__(self, *args, **kwargs):
+        val = self.get((args, kwargs))
+        if val is not None:
+            return val
+
+        val = self._func(*args, **kwargs)
+        self[(args, kwargs)] = val
+        return val
+
+    def __getitem__(self, key):
+        args, kwargs = key
         for (c_args, c_kwargs), val in self._cache:
             if all(tensorial_eq(c, a) for (c, a) in zip(c_args, args)) and\
                all(tensorial_eq(c_kwargs[k], kwargs[k]) for k in kwargs):
                 return val
-
-        val = self._func(*args, **kwargs)
-        self._cache.append(((args, kwargs), val))
-        return val
-
-    def __getitem__(self, key):
-        return self._cache[key]
+        raise KeyError(key)
 
     def __setitem__(self, key, val):
-        self._cache[key] = val
+        args, kwargs = key
+        for i, ((c_args, c_kwargs), _) in enumerate(self._cache):
+            if all(tensorial_eq(c, a) for (c, a) in zip(c_args, args)) and\
+               all(tensorial_eq(c_kwargs[k], kwargs[k]) for k in kwargs):
+                self._cache[i] = (key, val)
+                return
+        self._cache.append((key, val))
+
+    def __contains__(self, key):
+        return self.get(key) is not None
+
+    def get(self, key):
+        try:
+            return self[key]
+        except KeyError:
+            return None
 
     def clear(self):
         self._cache.clear()

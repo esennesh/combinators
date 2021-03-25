@@ -102,16 +102,18 @@ class TraceDiagram:
         return TraceDiagram.IDENT(dom)
 
 def retrieve_trace(func):
-    if hasattr(func.function, 'trace'):
-        return func.function.trace
+    if func.data and 'tracer' in func.data:
+        tracer = func.data['tracer']()
+        return tracer.trace
     return TraceDiagram.UNIT(func.dom, func.cod)
 
 TRACING_FUNCTOR = monoidal.Functor(lambda ob: ob, retrieve_trace, ob_factory=Ty,
                                    ar_factory=TraceDiagram)
 
 def clear_tracing(func):
-    if hasattr(func.function, 'clear'):
-        func.function.clear()
+    if func.data and 'tracer' in func.data:
+        tracer = func.data['tracer']()
+        tracer.clear()
     return TraceDiagram.UNIT(func.dom, func.cod)
 
 CLEAR_FUNCTOR = monoidal.Functor(lambda ob: ob, clear_tracing, ob_factory=Ty,
@@ -173,51 +175,65 @@ class TracedLensFunctor(monoidal.Functor):
                          ar_factory=TracedLensDiagram)
 
 class TracedLensBox(lens.LensBox, TracedLensDiagram):
-    pass
+    def conditioned(self, data=None):
+        return TracedLensBox(self.name, self.dom, self.cod, self.sample,
+                             self.update, data=data)
 
-class TracedFunction:
-    def __init__(self, name, function):
-        self._name = name
-        self._function = function
+class TracedLensFunction(lens.LensFunction):
+    def __init__(self, name, dom, cod, sample, update, **kwargs):
+        self._sample_func = sample
+        self._update_func = update
         self._trace = None
-        self._args = ()
+        traced_sample = cartesian.Box(name + '_sample', len(dom.upper),
+                                      len(cod.upper), self._traced_sample,
+                                      data={'tracer': lambda: self})
+        traced_update = cartesian.Box(name + '_update',
+                                      len(dom.upper @ cod.lower),
+                                      len(dom.lower), self._traced_update,
+                                      data={'tracer': lambda: self})
+        super().__init__(name, dom, cod, traced_sample, traced_update, **kwargs)
 
     @property
     def trace(self):
         return self._trace
 
     def clear(self):
-        self._args = ()
         self._trace = None
 
-    def __call__(self, *vals):
-        if self._args and len(self._args) == len(vals):
-            cached = all(utils.tensorial_eq(a, v) for (a, v) in
-                         zip(self._args, vals))
-            if cached:
-                return self._trace.box()[0]
+    def _traced_sample(self, *args, **kwargs):
+        if self.data is not None:
+            kwargs['data'] = self.data
 
-        self._args = vals
-        results, (log_weight, trace) = self._function(*vals)
-        self._trace = TraceDiagram.BOX(results, log_weight, trace, self._name)
-        return results
+        q = self.trace.box()[2] if self.trace else None
+        result, log_weight, p = self._sample_func(q, *args, **kwargs)
+        self._trace = TraceDiagram.BOX(result, log_weight, p, self.name)
 
-class TracedLensFunction(lens.LensFunction):
-    def __init__(self, name, dom, cod, sample, update):
-        if not hasattr(sample.function, 'trace'):
-            sample_func = TracedFunction(sample.name, sample.function)
+        return result
+
+    def _traced_update(self, *args, **kwargs):
+        if self.data is not None:
+            kwargs['data'] = self.data
+
+        if self.trace:
+            _, log_weight, p, _ = self.trace.box()
+            q, p = utils.split_latent(p)
         else:
-            sample_func = sample.function
-        sample = cartesian.Box(sample.name, sample.dom, sample.cod, sample_func)
-        super().__init__(name, dom, cod, sample, update)
+            q, p = None, {}
+            log_weight = 0.
+
+        result, q = self._update_func(q, *args, **kwargs)
+        assert all(not q[k].observed for k in q)
+
+        p = utils.join_traces(q, p)
+        self._trace = TraceDiagram.BOX(None, log_weight, p, self.name)
+        return result
 
     @staticmethod
     def create(box):
-        base = lens.LensFunction.create(box)
         if isinstance(box, TracedLensBox):
-            return TracedLensFunction(box.name, box.dom, box.cod, base.sample,
-                                      base.update)
-        return base
+            return TracedLensFunction(box.name, box.dom, box.cod, box.sample,
+                                      box.update, data=box.data)
+        return lens.LensFunction.create(box)
 
 TRACED_SEMANTIC_FUNCTOR = lens.LensFunctionFunctor(lambda ob: ob,
                                                    TracedLensFunction.create)
