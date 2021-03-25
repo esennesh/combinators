@@ -139,7 +139,7 @@ class TracedLensDiagram(lens.LensDiagram):
         return TracedLensDiagram.trace(self.compile(), *vals, **kwargs)
 
     @staticmethod
-    def id(dom):
+    def id(dom=lens.LensTy()):
         return Id(dom)
 
 class Id(TracedLensDiagram):
