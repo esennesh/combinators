@@ -45,7 +45,10 @@ class ImportanceSampler:
 
         if self.proposal is not None:
             self.proposal(q, *args, **kwargs)
-        return self._cache(q, *args, **kwargs)
+        result, log_weight, p = self._score(q, *args, **kwargs)
+        args = (p,) + args
+        self._cache[(args, kwargs)] = (result, log_weight, p)
+        return result, log_weight, p
 
     def _score(self, q, *args, **kwargs):
         p = NestedTrace(q=q)
