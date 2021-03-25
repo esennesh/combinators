@@ -123,7 +123,7 @@ class LensDiagram(monoidal.Diagram):
         return semantics.update(*vals)
 
     @staticmethod
-    def id(dom):
+    def id(dom=LensTy()):
         return Id(dom)
 
 class Id(LensDiagram):
