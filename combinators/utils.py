@@ -115,7 +115,7 @@ def normalize_weights(log_weights):
 
 def unique_shape(tensor, shape):
     for i, dim in enumerate(tensor.shape):
-        if i >= len(shape) or shape[i] != dim:
+        if i >= len(shape) or (dim != 1 and shape[i] != dim):
             return tensor.shape[i:]
     return ()
 
