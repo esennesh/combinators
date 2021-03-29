@@ -237,9 +237,9 @@ def plot_evidence_bounds(bounds, lower=True, figsize=(10, 10), scale='linear'):
     plt.show()
 
 def batch_expand(tensor, shape, check=False):
-    if not shape or (check and tensor.shape[:len(shape)] == shape):
+    if not shape or (check and not unique_shape(tensor, shape)):
         return tensor
-    return tensor.expand(*shape, *tensor.shape)
+    return tensor.expand(*shape, *unique_shape(tensor, shape))
 
 def vardict_map(vdict, func):
     result = vardict()
