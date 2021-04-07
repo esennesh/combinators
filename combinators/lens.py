@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from functools import reduce
+from typing import Sequence
 
 from discopy import cartesian, cat, messages, monoidal
 from discopy.monoidal import PRO, Sum, Ty
