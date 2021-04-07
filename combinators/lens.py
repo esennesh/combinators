@@ -314,6 +314,61 @@ class LensFunction(LensSemantics):
     def update(self, *args, **kwargs):
         return self._update(*args, **kwargs)
 
+@dataclass
+class LensProduct(LensSemantics):
+    lenses: Sequence[LensSemantics]
+
+    def __post_init__(self):
+        dom = reduce(lambda x, y: x @ y, [lens.dom for lens in self.lenses])
+        cod = reduce(lambda x, y: x @ y, [lens.cod for lens in self.lenses])
+        name = reduce(lambda x, y: '%s @ %s' % (str(x), str(y)), self.lenses)
+        monoidal.Box.__init__(self, name, dom, cod)
+
+    def sample(self, *args, **kwargs):
+        if kwargs:
+            args = args + (kwargs,)
+
+        k = 0
+        rets = []
+        for lens in self.lenses:
+            vals = cartesian.tuplify(lens.sample(*args[k:k+len(lens.dom)]))
+            rets.append(vals)
+            k += len(lens.dom)
+        return cartesian.untuplify(*sum(rets, ()))
+
+    def update(self, *args, **kwargs):
+        if kwargs:
+            args = args + (kwargs,)
+
+        fwds = args[:len(self.dom.upper)]
+        backs = args[len(self.dom.upper):]
+
+        f = 0
+        b = 0
+        results = ()
+        for lens in self.lenses:
+            upper = len(lens.dom.upper)
+            lower = len(lens.cod.lower)
+            result = lens.update(*fwds[f:f+upper], *backs[b:b+lower])
+            results = results + cartesian.tuplify(result)
+
+            f += upper
+            b += lower
+
+        return cartesian.untuplify(*results)
+
+    def tensor(self, *others):
+        """
+        Implements the tensor product of lenses.
+        """
+        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
+            return monoidal.Diagram.tensor(self, *others)
+        other = others[0]
+        if not isinstance(other, LensSemantics):
+            raise TypeError(messages.type_err(LensSemantics, other))
+
+        return LensProduct(self.lenses + [other])
+
 class LensFunction(monoidal.Box):
     def __init__(self, name, dom, cod, sample, update, **params):
         assert isinstance(dom, LensTy)
