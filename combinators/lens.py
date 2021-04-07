@@ -243,6 +243,61 @@ SWAP = LensBox('swap', LensPRO(2), LensPRO(2), lambda x, y: (y, x),
 DISCARD = LensBox('discard', PRO(1) & PRO(0), LensPRO(0), lambda *x: (),
                   lambda p, *x: ((), p))
 
+class LensSemantics(ABC, monoidal.Box):
+    def __call__(self, *args, **kwargs):
+        return self.sample(*args, **kwargs)
+
+    @abstractmethod
+    def sample(self, *args, **kwargs):
+        pass
+
+    @abstractmethod
+    def update(self, *args, **kwargs):
+        pass
+
+    @staticmethod
+    def id(dom):
+        return LensId(dom)
+
+    def then(self, *others):
+        """
+        Implements the sequential composition of lenses.
+        """
+        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
+            return monoidal.Diagram.then(self, *others)
+        other = others[0]
+        if not isinstance(other, LensSemantics):
+            raise TypeError(messages.type_err(LensSemantics, other))
+        if len(self.cod.upper) != len(other.dom.upper) or\
+           len(self.cod.lower) != len(other.dom.lower):
+            raise cat.AxiomError(messages.does_not_compose(self, other))
+
+        lenses = [lens for lens in (self,) + others
+                  if not isinstance(lens, LensId)]
+        if not lenses:
+            return LensId(self.dom)
+        elif len(lenses) == 1:
+            return lenses[0]
+        return LensComposite(lenses)
+
+    def tensor(self, *others):
+        """
+        Implements the tensor product of lenses.
+        """
+        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
+            return monoidal.Diagram.tensor(self, *others)
+        other = others[0]
+        if not isinstance(other, LensSemantics):
+            raise TypeError(messages.type_err(LensSemantics, other))
+
+        lenses = [lens for lens in (self,) + others
+                  if len(lens.dom) or len(lens.cod)]
+        if not lenses:
+            return LensId(LensTy())
+        elif len(lenses) == 1:
+            return lenses[0]
+        return LensProduct(lenses)
+
 class LensFunction(monoidal.Box):
     def __init__(self, name, dom, cod, sample, update, **params):
         assert isinstance(dom, LensTy)
