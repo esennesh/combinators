@@ -414,35 +414,18 @@ class LensComposite(LensSemantics):
 
         return LensComposite(self.lenses + [other])
 
-class LensFunction(monoidal.Box):
-    def __init__(self, name, dom, cod, sample, update, **params):
+class LensId(LensSemantics):
+    def __init__(self, dom):
         assert isinstance(dom, LensTy)
-        assert isinstance(cod, LensTy)
+        monoidal.Box.__init__(self, 'Id(%d)' % len(dom.upper), dom, dom)
 
-        if isinstance(sample, cartesian.Diagram):
-            self._sample = sample
-        else:
-            self._sample = cartesian.Box(name + '_sample', len(dom.upper),
-                                         len(cod.upper), sample)
-        if isinstance(update, cartesian.Diagram):
-            self._update = update
-        else:
-            self._update = cartesian.Box(name + '_update',
-                                         len(dom.upper @ cod.lower),
-                                         len(dom.lower), update)
+    def sample(self, *args, **kwargs):
+        if kwargs:
+            args = args + (kwargs,)
+        return cartesian.untuplify(*args)
 
-        super().__init__(name, dom, cod, **params)
-
-    def __call__(self, *vals):
-        return self._sample(*vals)
-
-    @property
-    def sample(self):
-        return self._sample
-
-    @property
-    def update(self):
-        return self._update
+    def update(self, *args):
+        return args[len(self.dom.upper):]
 
     def then(self, *others):
         """
@@ -451,54 +434,12 @@ class LensFunction(monoidal.Box):
         if len(others) != 1 or any(isinstance(other, Sum) for other in others):
             return monoidal.Diagram.then(self, *others)
         other = others[0]
-        if not isinstance(other, LensFunction):
-            raise TypeError(messages.type_err(LensFunction, other))
+        if not isinstance(other, LensSemantics):
+            raise TypeError(messages.type_err(LensSemantics, other))
         if len(self.cod.upper) != len(other.dom.upper) or\
            len(self.cod.lower) != len(other.dom.lower):
             raise cat.AxiomError(messages.does_not_compose(self, other))
 
-        sample = self.sample >> other.sample
-        update0 = cartesian.Copy(len(self.dom.upper)) @\
-                  cartesian.Id(len(other.cod.lower))
-        update1 = cartesian.Id(len(self.dom.upper)) @ self.sample @\
-                  cartesian.Id(len(other.cod.lower))
-        update2 = cartesian.Id(len(self.dom.upper)) @ other.update
-        update = update0 >> update1 >> update2 >> self.update
-        return LensFunction('%s >> %s' % (self.name, other.name), self.dom,
-                            other.cod, sample, update)
+        return other
 
-    def tensor(self, *others):
-        """
-        Implements the tensor product of lenses.
-        """
-        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
-            return monoidal.Diagram.tensor(self, *others)
-        other = others[0]
-        if not isinstance(other, LensFunction):
-            raise TypeError(messages.type_err(LensFunction, other))
-
-        dom = self.dom @ other.dom
-        cod = self.cod @ other.cod
-
-        sample = self.sample @ other.sample
-        update0 = cartesian.Id(len(self.dom.upper)) @\
-                  cartesian.Swap(len(other.dom.upper), len(self.cod.lower)) @\
-                  cartesian.Id(len(other.cod.lower))
-        update = update0 >> (self.update @ other.update)
-        return LensFunction('%s @ %s' % (self.name, other.name), dom, cod,
-                            sample, update)
-
-    @staticmethod
-    def id(dom):
-        assert isinstance(dom, LensTy)
-        sample = cartesian.Id(len(dom.upper))
-        update = cartesian.Discard(len(dom.upper)) @\
-                 cartesian.Id(len(dom.lower))
-        return LensFunction('Id(%d)' % len(dom.upper), dom, dom, sample, update)
-
-    @staticmethod
-    def create(box):
-        return LensFunction(box.name, box.dom, box.cod, box.sample, box.update,
-                            data=box.data)
-
-SEMANTIC_FUNCTOR = LensFunctionFunctor(lambda lob: lob, LensFunction.create)
+SEMANTIC_FUNCTOR = LensSemanticsFunctor(lambda lob: lob, LensFunction.create)
