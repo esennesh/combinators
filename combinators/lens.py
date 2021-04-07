@@ -158,9 +158,9 @@ class LensFunctor(monoidal.Functor):
     def __init__(self, ob, ar):
         super().__init__(ob, ar, ob_factory=LensTy, ar_factory=LensDiagram)
 
-class LensFunctionFunctor(monoidal.Functor):
+class LensSemanticsFunctor(monoidal.Functor):
     def __init__(self, ob, ar):
-        super().__init__(ob, ar, ob_factory=LensTy, ar_factory=LensFunction)
+        super().__init__(ob, ar, ob_factory=LensTy, ar_factory=LensSemantics)
 
 class LensBox(monoidal.Box, LensDiagram):
     def __init__(self, name, dom, cod, sample, update, data=None):
