@@ -298,6 +298,22 @@ class LensSemantics(ABC, monoidal.Box):
             return lenses[0]
         return LensProduct(lenses)
 
+class LensFunction(LensSemantics):
+    def __init__(self, name, dom, cod, sample, update, **params):
+        assert isinstance(dom, LensTy)
+        assert isinstance(cod, LensTy)
+
+        self._sample = sample
+        self._update = update
+
+        monoidal.Box.__init__(self, name, dom, cod, **params)
+
+    def sample(self, *args, **kwargs):
+        return self._sample(*args, **kwargs)
+
+    def update(self, *args, **kwargs):
+        return self._update(*args, **kwargs)
+
 class LensFunction(monoidal.Box):
     def __init__(self, name, dom, cod, sample, update, **params):
         assert isinstance(dom, LensTy)
