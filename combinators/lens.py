@@ -369,6 +369,51 @@ class LensProduct(LensSemantics):
 
         return LensProduct(self.lenses + [other])
 
+@dataclass
+class LensComposite(LensSemantics):
+    lenses: Sequence[LensSemantics]
+
+    def __post_init__(self):
+        name = reduce(lambda x, y: '%s >> %s' % (str(x), str(y)), self.lenses)
+        monoidal.Box.__init__(self, name, self.lenses[0].dom,
+                              self.lenses[-1].cod)
+
+    def sample(self, *args, **kwargs):
+        if kwargs:
+            args = args + (kwargs,)
+        vals = args
+
+        for lens in self.lenses:
+            vals = cartesian.tuplify(lens.sample(*vals))
+        return cartesian.untuplify(*vals)
+
+    def update(self, *args):
+        wires = [[None, None] for _ in range(len(self.lenses) + 1)]
+        wires[0][0] = args[0:len(self.lenses[0].dom.upper)]
+        wires[-1][1] = args[len(self.lenses[0].dom.upper):]
+
+        for k, lens in enumerate(self.lenses):
+            wires[k+1][0] = cartesian.tuplify(lens.sample(*wires[k][0]))
+        for k, lens in enumerate(reversed(self.lenses)):
+            j = -(k + 1)
+            wires[j-1][1] = lens.update(*wires[j-1][0], *wires[j][1])
+        return cartesian.untuplify(*wires[0][1])
+
+    def then(self, *others):
+        """
+        Implements the sequential composition of lenses.
+        """
+        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
+            return monoidal.Diagram.then(self, *others)
+        other = others[0]
+        if not isinstance(other, LensSemantics):
+            raise TypeError(messages.type_err(LensSemantics, other))
+        if len(self.cod.upper) != len(other.dom.upper) or\
+           len(self.cod.lower) != len(other.dom.lower):
+            raise cat.AxiomError(messages.does_not_compose(self, other))
+
+        return LensComposite(self.lenses + [other])
+
 class LensFunction(monoidal.Box):
     def __init__(self, name, dom, cod, sample, update, **params):
         assert isinstance(dom, LensTy)
