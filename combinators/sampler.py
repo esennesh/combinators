@@ -60,7 +60,7 @@ class ImportanceSampler:
 
         return result, log_weight, p
 
-    def __call__(self, q, *args, **kwargs):
+    def sample(self, q, *args, **kwargs):
         if args and isinstance(args[-1], dict):
             kwargs = {**args[-1], **kwargs}
             args = args[:-1]
@@ -86,7 +86,8 @@ class ImportanceSampler:
 
 def importance_box(name, target, proposal, batch_shape, dom, cod, data=None):
     sampler = ImportanceSampler(target, proposal, batch_shape)
-    return TracedLensBox(name, dom, cod, sampler, sampler.update, data=data)
+    return TracedLensBox(name, dom, cod, sampler.sample, sampler.update,
+                         data=data)
 
 class VariationalSampler(ImportanceSampler):
     def __init__(self, target, proposal, mk_optimizer, batch_shape=(1,),
