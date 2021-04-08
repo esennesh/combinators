@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from discopy import cartesian, cat, messages, monoidal
 from discopy.rigid import PRO, Ty
-from functools import reduce
+from functools import reduce, singledispatch
 import probtorch
 from probtorch.stochastic import Provenance, Trace
 import torch
@@ -122,14 +122,13 @@ class TracedLensDiagram(lens.LensDiagram):
     def trace(semantics, *vals, **kwargs):
         if kwargs:
             vals = vals + (kwargs,)
+
         result = semantics.sample(*vals)
-        trace = TRACING_FUNCTOR(semantics.sample)
-        return result, trace
+        return result, _trace(semantics)
 
     @staticmethod
     def clear(semantics):
-        CLEAR_FUNCTOR(semantics.sample)
-        return semantics
+        _clear(semantics)
 
     def __call__(self, *vals, **kwargs):
         return TracedLensDiagram.trace(self.compile(), *vals, **kwargs)
@@ -229,5 +228,43 @@ class TracedLensFunction(lens.LensFunction):
                                       box.update, data=box.data)
         return lens.LensFunction.create(box)
 
-TRACED_SEMANTIC_FUNCTOR = lens.LensFunctionFunctor(lambda ob: ob,
-                                                   TracedLensFunction.create)
+TRACED_SEMANTIC_FUNCTOR = lens.LensSemanticsFunctor(lambda ob: ob,
+                                                    TracedLensFunction.create)
+
+@singledispatch
+def _trace(_: lens.LensSemantics):
+    pass
+
+@_trace.register
+def _(f: lens.LensProduct):
+    return ProductTrace([_trace(lens) for lens in f.lenses])
+
+@_trace.register
+def _(f: lens.LensComposite):
+    return CompositeTrace([_trace(lens) for lens in f.lenses])
+
+@_trace.register
+def _(_: lens.LensId):
+    return IdTrace()
+
+@_trace.register
+def _(f: TracedLensFunction):
+    return f.trace
+
+@singledispatch
+def _clear(_: lens.LensSemantics):
+    pass
+
+@_clear.register
+def _(f: lens.LensProduct):
+    for l in f.lenses:
+        _clear(l)
+
+@_clear.register
+def _(f: lens.LensComposite):
+    for l in f.lenses:
+        _clear(l)
+
+@_clear.register
+def _(f: TracedLensFunction):
+    f.clear()
