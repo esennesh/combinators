@@ -87,24 +87,6 @@ class CompositeTrace(MonoidalTrace):
         return reduce(utils.join_tracing_states,
                       [a.fold() for a in self.arrows])
 
-def retrieve_trace(func):
-    if func.data and 'tracer' in func.data:
-        tracer = func.data['tracer']()
-        return tracer.trace
-    return TraceDiagram.UNIT(func.dom, func.cod)
-
-TRACING_FUNCTOR = monoidal.Functor(lambda ob: ob, retrieve_trace, ob_factory=Ty,
-                                   ar_factory=TraceDiagram)
-
-def clear_tracing(func):
-    if func.data and 'tracer' in func.data:
-        tracer = func.data['tracer']()
-        tracer.clear()
-    return TraceDiagram.UNIT(func.dom, func.cod)
-
-CLEAR_FUNCTOR = monoidal.Functor(lambda ob: ob, clear_tracing, ob_factory=Ty,
-                                 ar_factory=TraceDiagram)
-
 @dataclass
 class EmptyTrace(MonoidalTrace):
     dom: lens.LensTy
