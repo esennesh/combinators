@@ -10,6 +10,6 @@ class SequentialConditioner(lens.LensFunctor):
         self._boxes = {k: collections.deque(v) for k, v in vals.items()}
 
     def _condition(self, box):
-        if isinstance(box, tracing.TracedLensBox) and box.name in self._boxes:
-            return box.conditioned(self._boxes[box.name].popleft())
+        if box.name in self._boxes:
+            return box.condition(self._boxes[box.name].popleft())
         return box

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
-from adt import adt, Case
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from discopy import cartesian, cat, messages, monoidal
 from discopy.rigid import PRO, Ty
-from functools import reduce
+from functools import reduce, singledispatch
 import probtorch
 from probtorch.stochastic import Provenance, Trace
 import torch
@@ -56,86 +57,57 @@ class NestedTrace(Trace):
                                              reparameterized=False)
         return log_likelihood + log_prior + log_proposal
 
-@adt
-class TraceDiagram:
-    BOX: Case[typing.Optional[tuple], torch.tensor, NestedTrace, str]
-    PRODUCT: Case[typing.List["TraceDiagram"]]
-    ARROW: Case[typing.List["TraceDiagram"]]
-    UNIT: Case[Ty, Ty]
-    IDENT: Case[Ty]
+class MonoidalTrace(ABC):
+    @abstractmethod
+    def fold(self):
+        return 0., Trace()
 
-    def __matmul__(self, other):
-        if self._key == TraceDiagram._Key.IDENT and not self.ident():
-            return other
-        if other._key == TraceDiagram._Key.IDENT and not other.ident():
-            return self
-
-        ls = self.product() if self._key == TraceDiagram._Key.PRODUCT else\
-             [self]
-        rs = other.product() if other._key == TraceDiagram._Key.PRODUCT else\
-             [other]
-        return TraceDiagram.PRODUCT(ls + rs)
-
-    def __rshift__(self, other):
-        if self._key == TraceDiagram._Key.IDENT:
-            return other
-        if other._key == TraceDiagram._Key.IDENT:
-            return self
-
-        ls = self.arrow() if self._key == TraceDiagram._Key.ARROW else [self]
-        rs = other.arrow() if other._key == TraceDiagram._Key.ARROW else [other]
-        return TraceDiagram.ARROW(ls + rs)
+@dataclass
+class BoxTrace(MonoidalTrace):
+    retval: typing.Optional[tuple]
+    log_weight: torch.tensor
+    probs: NestedTrace
 
     def fold(self):
-        return self.match(
-            box=lambda _, log_weight, trace, __: (log_weight, trace),
-            product=lambda ts: reduce(utils.join_tracing_states,
-                                      [t.fold() for t in ts]),
-            arrow=lambda ts: reduce(utils.join_tracing_states,
-                                    [t.fold() for t in ts]),
-            unit=lambda _, __: (0., {}),
-            ident=lambda _: (0., {})
-        )
+        return self.log_weight, self.probs
 
-    @staticmethod
-    def id(dom):
-        return TraceDiagram.IDENT(dom)
+@dataclass
+class ProductTrace(MonoidalTrace):
+    factors: typing.Sequence["MonoidalTrace"]
 
-def retrieve_trace(func):
-    if func.data and 'tracer' in func.data:
-        tracer = func.data['tracer']()
-        return tracer.trace
-    return TraceDiagram.UNIT(func.dom, func.cod)
+    def fold(self):
+        return reduce(utils.join_tracing_states,
+                      [f.fold() for f in self.factors])
 
-TRACING_FUNCTOR = monoidal.Functor(lambda ob: ob, retrieve_trace, ob_factory=Ty,
-                                   ar_factory=TraceDiagram)
+@dataclass
+class CompositeTrace(MonoidalTrace):
+    arrows: typing.Sequence["MonoidalTrace"]
 
-def clear_tracing(func):
-    if func.data and 'tracer' in func.data:
-        tracer = func.data['tracer']()
-        tracer.clear()
-    return TraceDiagram.UNIT(func.dom, func.cod)
+    def fold(self):
+        return reduce(utils.join_tracing_states,
+                      [a.fold() for a in self.arrows])
 
-CLEAR_FUNCTOR = monoidal.Functor(lambda ob: ob, clear_tracing, ob_factory=Ty,
-                                 ar_factory=TraceDiagram)
+@dataclass
+class EmptyTrace(MonoidalTrace):
+    dom: lens.LensTy
+    cod: lens.LensTy
+
+    def fold(self):
+        return super().fold()
 
 @monoidal.Diagram.subclass
 class TracedLensDiagram(lens.LensDiagram):
-    def compile(self):
-        return TRACED_SEMANTIC_FUNCTOR(self)
-
     @staticmethod
     def trace(semantics, *vals, **kwargs):
         if kwargs:
             vals = vals + (kwargs,)
+
         result = semantics.sample(*vals)
-        trace = TRACING_FUNCTOR(semantics.sample)
-        return result, trace
+        return result, _trace(semantics)
 
     @staticmethod
     def clear(semantics):
-        CLEAR_FUNCTOR(semantics.sample)
-        return semantics
+        _clear(semantics)
 
     def __call__(self, *vals, **kwargs):
         return TracedLensDiagram.trace(self.compile(), *vals, **kwargs)
@@ -175,65 +147,77 @@ class TracedLensFunctor(monoidal.Functor):
                          ar_factory=TracedLensDiagram)
 
 class TracedLensBox(lens.LensBox, TracedLensDiagram):
-    def conditioned(self, data=None):
-        return TracedLensBox(self.name, self.dom, self.cod, self.sample,
-                             self.update, data=data)
+    pass
 
 class TracedLensFunction(lens.LensFunction):
     def __init__(self, name, dom, cod, sample, update, **kwargs):
-        self._sample_func = sample
-        self._update_func = update
         self._trace = None
-        traced_sample = cartesian.Box(name + '_sample', len(dom.upper),
-                                      len(cod.upper), self._traced_sample,
-                                      data={'tracer': lambda: self})
-        traced_update = cartesian.Box(name + '_update',
-                                      len(dom.upper @ cod.lower),
-                                      len(dom.lower), self._traced_update,
-                                      data={'tracer': lambda: self})
-        super().__init__(name, dom, cod, traced_sample, traced_update, **kwargs)
+        super().__init__(name, dom, cod, sample, update, **kwargs)
+        self.clear()
 
     @property
     def trace(self):
         return self._trace
 
     def clear(self):
-        self._trace = None
+        self._trace = BoxTrace(None, 0., NestedTrace())
 
-    def _traced_sample(self, *args, **kwargs):
+    def sample(self, *args, **kwargs):
         if self.data is not None:
             kwargs['data'] = self.data
 
-        q = self.trace.box()[2] if self.trace else None
-        result, log_weight, p = self._sample_func(q, *args, **kwargs)
-        self._trace = TraceDiagram.BOX(result, log_weight, p, self.name)
+        self._trace = BoxTrace(*super().sample(self.trace.probs, *args,
+                                               **kwargs))
+        return self.trace.retval
 
-        return result
-
-    def _traced_update(self, *args, **kwargs):
+    def update(self, *args, **kwargs):
         if self.data is not None:
             kwargs['data'] = self.data
 
-        if self.trace:
-            _, log_weight, p, _ = self.trace.box()
-            q, p = utils.split_latent(p)
-        else:
-            q, p = None, {}
-            log_weight = 0.
+        q, p = utils.split_latent(self.trace.probs)
 
-        result, q = self._update_func(q, *args, **kwargs)
+        result, q = super().update(q, *args, **kwargs)
         assert all(not q[k].observed for k in q)
 
-        p = utils.join_traces(q, p)
-        self._trace = TraceDiagram.BOX(None, log_weight, p, self.name)
+        self._trace.retval = None
+        self._trace.probs = utils.join_traces(q, p)
         return result
 
-    @staticmethod
-    def create(box):
-        if isinstance(box, TracedLensBox):
-            return TracedLensFunction(box.name, box.dom, box.cod, box.sample,
-                                      box.update, data=box.data)
-        return lens.LensFunction.create(box)
+@lens.lens_semantics.register
+def _traced_lens_semantics(box: TracedLensBox):
+    return TracedLensFunction(box.name, box.dom, box.cod, box.sample,
+                              box.update, data=box.data)
 
-TRACED_SEMANTIC_FUNCTOR = lens.LensFunctionFunctor(lambda ob: ob,
-                                                   TracedLensFunction.create)
+@singledispatch
+def _trace(f: lens.LensSemantics):
+    return EmptyTrace(f.dom, f.cod)
+
+@_trace.register
+def _(f: lens.LensProduct):
+    return ProductTrace([_trace(lens) for lens in f.lenses])
+
+@_trace.register
+def _(f: lens.LensComposite):
+    return CompositeTrace([_trace(lens) for lens in f.lenses])
+
+@_trace.register
+def _(f: TracedLensFunction):
+    return f.trace
+
+@singledispatch
+def _clear(_: lens.LensSemantics):
+    pass
+
+@_clear.register
+def _(f: lens.LensProduct):
+    for l in f.lenses:
+        _clear(l)
+
+@_clear.register
+def _(f: lens.LensComposite):
+    for l in f.lenses:
+        _clear(l)
+
+@_clear.register
+def _(f: TracedLensFunction):
+    f.clear()
