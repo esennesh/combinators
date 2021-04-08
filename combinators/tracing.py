@@ -58,6 +58,9 @@ class NestedTrace(Trace):
         return log_likelihood + log_prior + log_proposal
 
 class MonoidalTrace(ABC):
+    def __init__(self):
+        self.log_weight = 0.
+
     @abstractmethod
     def fold(self):
         return 0., Trace()
@@ -65,7 +68,7 @@ class MonoidalTrace(ABC):
 @dataclass
 class BoxTrace(MonoidalTrace):
     retval: typing.Optional[tuple]
-    log_weight: torch.tensor
+    log_weight: typing.Union[torch.tensor, float]
     probs: NestedTrace
 
     def fold(self):
@@ -75,22 +78,33 @@ class BoxTrace(MonoidalTrace):
 class ProductTrace(MonoidalTrace):
     factors: typing.Sequence["MonoidalTrace"]
 
+    def __post_init__(self):
+        super().__init__()
+
     def fold(self):
-        return reduce(utils.join_tracing_states,
-                      [f.fold() for f in self.factors])
+        self.log_weight, probs = reduce(utils.join_tracing_states,
+                                        [f.fold() for f in self.factors])
+        return self.log_weight, probs
 
 @dataclass
 class CompositeTrace(MonoidalTrace):
     arrows: typing.Sequence["MonoidalTrace"]
 
+    def __post_init__(self):
+        super().__init__()
+
     def fold(self):
-        return reduce(utils.join_tracing_states,
-                      [a.fold() for a in self.arrows])
+        self.log_weight, probs = reduce(utils.join_tracing_states,
+                                        [a.fold() for a in self.arrows])
+        return self.log_weight, probs
 
 @dataclass
 class EmptyTrace(MonoidalTrace):
     dom: lens.LensTy
     cod: lens.LensTy
+
+    def __post_init__(self):
+        super().__init__()
 
     def fold(self):
         return super().fold()
