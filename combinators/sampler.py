@@ -3,7 +3,7 @@
 import inspect
 import torch
 
-from .tracing import NestedTrace, TraceDiagram, TracedLensBox
+from .tracing import NestedTrace, TracedLensBox
 from . import utils
 
 class ImportanceSampler:
