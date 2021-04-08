@@ -183,12 +183,14 @@ class TracedLensFunction(lens.LensFunction):
         self._trace.probs = utils.join_traces(q, p)
         return result
 
-TRACED_SEMANTIC_FUNCTOR = lens.LensSemanticsFunctor(lambda ob: ob,
-                                                    TracedLensFunction.create)
+@lens.lens_semantics.register
+def _traced_lens_semantics(box: TracedLensBox):
+    return TracedLensFunction(box.name, box.dom, box.cod, box.sample,
+                              box.update, data=box.data)
 
 @singledispatch
-def _trace(_: lens.LensSemantics):
-    pass
+def _trace(f: lens.LensSemantics):
+    return EmptyTrace(f.dom, f.cod)
 
 @_trace.register
 def _(f: lens.LensProduct):
@@ -197,10 +199,6 @@ def _(f: lens.LensProduct):
 @_trace.register
 def _(f: lens.LensComposite):
     return CompositeTrace([_trace(lens) for lens in f.lenses])
-
-@_trace.register
-def _(_: lens.LensId):
-    return IdTrace()
 
 @_trace.register
 def _(f: TracedLensFunction):
