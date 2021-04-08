@@ -15,6 +15,7 @@ class ImportanceSampler:
         self.target = target
         sig = inspect.signature(target.forward)
         target_batching = 'batch_shape' in sig.parameters
+        self._pass_data = 'data' in sig.parameters
 
         self.proposal = proposal
         proposal_batching = False
@@ -65,6 +66,8 @@ class ImportanceSampler:
             args = args[:-1]
         if self._pass_batch_shape:
             kwargs['batch_shape'] = self.batch_shape
+        if not self._pass_data and 'data' in kwargs:
+            del kwargs['data']
 
         if q:
             args, kwargs = self._expand_args(*args, **kwargs)
@@ -75,6 +78,9 @@ class ImportanceSampler:
         self._cache.clear()
 
     def update(self, q, *args, **kwargs):
+        if not self._pass_data and 'data' in kwargs:
+            del kwargs['data']
+
         args, kwargs = self._expand_args(*args, **kwargs)
         return self.target.update(q, *args, **kwargs)
 
