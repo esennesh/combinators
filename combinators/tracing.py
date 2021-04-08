@@ -115,9 +115,6 @@ class EmptyTrace(MonoidalTrace):
 
 @monoidal.Diagram.subclass
 class TracedLensDiagram(lens.LensDiagram):
-    def compile(self):
-        return TRACED_SEMANTIC_FUNCTOR(self)
-
     @staticmethod
     def trace(semantics, *vals, **kwargs):
         if kwargs:
