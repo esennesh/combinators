@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-from adt import adt, Case
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from discopy import cartesian, cat, messages, monoidal
 from discopy.rigid import PRO, Ty
 from functools import reduce
@@ -56,50 +57,35 @@ class NestedTrace(Trace):
                                              reparameterized=False)
         return log_likelihood + log_prior + log_proposal
 
-@adt
-class TraceDiagram:
-    BOX: Case[typing.Optional[tuple], torch.tensor, NestedTrace, str]
-    PRODUCT: Case[typing.List["TraceDiagram"]]
-    ARROW: Case[typing.List["TraceDiagram"]]
-    UNIT: Case[Ty, Ty]
-    IDENT: Case[Ty]
+class MonoidalTrace(ABC):
+    @abstractmethod
+    def fold(self):
+        return 0., Trace()
 
-    def __matmul__(self, other):
-        if self._key == TraceDiagram._Key.IDENT and not self.ident():
-            return other
-        if other._key == TraceDiagram._Key.IDENT and not other.ident():
-            return self
-
-        ls = self.product() if self._key == TraceDiagram._Key.PRODUCT else\
-             [self]
-        rs = other.product() if other._key == TraceDiagram._Key.PRODUCT else\
-             [other]
-        return TraceDiagram.PRODUCT(ls + rs)
-
-    def __rshift__(self, other):
-        if self._key == TraceDiagram._Key.IDENT:
-            return other
-        if other._key == TraceDiagram._Key.IDENT:
-            return self
-
-        ls = self.arrow() if self._key == TraceDiagram._Key.ARROW else [self]
-        rs = other.arrow() if other._key == TraceDiagram._Key.ARROW else [other]
-        return TraceDiagram.ARROW(ls + rs)
+@dataclass
+class BoxTrace(MonoidalTrace):
+    retval: typing.Optional[tuple]
+    log_weight: torch.tensor
+    probs: NestedTrace
 
     def fold(self):
-        return self.match(
-            box=lambda _, log_weight, trace, __: (log_weight, trace),
-            product=lambda ts: reduce(utils.join_tracing_states,
-                                      [t.fold() for t in ts]),
-            arrow=lambda ts: reduce(utils.join_tracing_states,
-                                    [t.fold() for t in ts]),
-            unit=lambda _, __: (0., {}),
-            ident=lambda _: (0., {})
-        )
+        return self.log_weight, self.probs
 
-    @staticmethod
-    def id(dom):
-        return TraceDiagram.IDENT(dom)
+@dataclass
+class ProductTrace(MonoidalTrace):
+    factors: typing.Sequence["MonoidalTrace"]
+
+    def fold(self):
+        return reduce(utils.join_tracing_states,
+                      [f.fold() for f in self.factors])
+
+@dataclass
+class CompositeTrace(MonoidalTrace):
+    arrows: typing.Sequence["MonoidalTrace"]
+
+    def fold(self):
+        return reduce(utils.join_tracing_states,
+                      [a.fold() for a in self.arrows])
 
 def retrieve_trace(func):
     if func.data and 'tracer' in func.data:
@@ -118,6 +104,14 @@ def clear_tracing(func):
 
 CLEAR_FUNCTOR = monoidal.Functor(lambda ob: ob, clear_tracing, ob_factory=Ty,
                                  ar_factory=TraceDiagram)
+
+@dataclass
+class EmptyTrace(MonoidalTrace):
+    dom: lens.LensTy
+    cod: lens.LensTy
+
+    def fold(self):
+        return super().fold()
 
 @monoidal.Diagram.subclass
 class TracedLensDiagram(lens.LensDiagram):
