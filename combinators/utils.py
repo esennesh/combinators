@@ -67,6 +67,10 @@ class TensorialCache:
 def tensorial_eq(x, y):
     if isinstance(x, torch.Tensor) and isinstance(y, torch.Tensor):
         return (x == y).all()
+    if isinstance(x, probtorch.Trace) and isinstance(y, probtorch.Trace):
+        if set(x.variables()) != set(y.variables()):
+            return False
+        return all(tensorial_eq(x[v].value, y[v].value) for v in x.variables())
     return x == y
 
 def join_tracing_states(statex, statey, unary_concat=True):
