@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from functools import reduce
+from functools import reduce, singledispatch
 from typing import Sequence
 
 from discopy import cartesian, cat, messages, monoidal
@@ -442,4 +442,9 @@ class LensId(LensSemantics):
 
         return other
 
-SEMANTIC_FUNCTOR = LensSemanticsFunctor(lambda lob: lob, LensFunction.create)
+@singledispatch
+def lens_semantics(box: LensBox):
+    return LensFunction(box.name, box.dom, box.cod, box.sample, box.update,
+                        data=box.data)
+
+SEMANTIC_FUNCTOR = LensSemanticsFunctor(lambda lob: lob, lens_semantics)
