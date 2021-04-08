@@ -280,7 +280,7 @@ class LensSemantics(ABC, monoidal.Box):
                   if not isinstance(lens, LensId)]
         if not lenses:
             return LensId(self.dom)
-        elif len(lenses) == 1:
+        if len(lenses) == 1:
             return lenses[0]
         return LensComposite(lenses)
 
@@ -298,7 +298,7 @@ class LensSemantics(ABC, monoidal.Box):
                   if len(lens.dom) or len(lens.cod)]
         if not lenses:
             return LensId(LensTy())
-        elif len(lenses) == 1:
+        if len(lenses) == 1:
             return lenses[0]
         return LensProduct(lenses)
 
