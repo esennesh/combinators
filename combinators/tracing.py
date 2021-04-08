@@ -169,59 +169,37 @@ class TracedLensBox(lens.LensBox, TracedLensDiagram):
 
 class TracedLensFunction(lens.LensFunction):
     def __init__(self, name, dom, cod, sample, update, **kwargs):
-        self._sample_func = sample
-        self._update_func = update
         self._trace = None
-        traced_sample = cartesian.Box(name + '_sample', len(dom.upper),
-                                      len(cod.upper), self._traced_sample,
-                                      data={'tracer': lambda: self})
-        traced_update = cartesian.Box(name + '_update',
-                                      len(dom.upper @ cod.lower),
-                                      len(dom.lower), self._traced_update,
-                                      data={'tracer': lambda: self})
-        super().__init__(name, dom, cod, traced_sample, traced_update, **kwargs)
+        super().__init__(name, dom, cod, sample, update, **kwargs)
+        self.clear()
 
     @property
     def trace(self):
         return self._trace
 
     def clear(self):
-        self._trace = None
+        self._trace = BoxTrace(None, 0., NestedTrace())
 
-    def _traced_sample(self, *args, **kwargs):
+    def sample(self, *args, **kwargs):
         if self.data is not None:
             kwargs['data'] = self.data
 
-        q = self.trace.box()[2] if self.trace else None
-        result, log_weight, p = self._sample_func(q, *args, **kwargs)
-        self._trace = TraceDiagram.BOX(result, log_weight, p, self.name)
+        self._trace = BoxTrace(*super().sample(self.trace.probs, *args,
+                                               **kwargs))
+        return self.trace.retval
 
-        return result
-
-    def _traced_update(self, *args, **kwargs):
+    def update(self, *args, **kwargs):
         if self.data is not None:
             kwargs['data'] = self.data
 
-        if self.trace:
-            _, log_weight, p, _ = self.trace.box()
-            q, p = utils.split_latent(p)
-        else:
-            q, p = None, {}
-            log_weight = 0.
+        q, p = utils.split_latent(self.trace.probs)
 
-        result, q = self._update_func(q, *args, **kwargs)
+        result, q = super().update(q, *args, **kwargs)
         assert all(not q[k].observed for k in q)
 
-        p = utils.join_traces(q, p)
-        self._trace = TraceDiagram.BOX(None, log_weight, p, self.name)
+        self._trace.retval = None
+        self._trace.probs = utils.join_traces(q, p)
         return result
-
-    @staticmethod
-    def create(box):
-        if isinstance(box, TracedLensBox):
-            return TracedLensFunction(box.name, box.dom, box.cod, box.sample,
-                                      box.update, data=box.data)
-        return lens.LensFunction.create(box)
 
 TRACED_SEMANTIC_FUNCTOR = lens.LensSemanticsFunctor(lambda ob: ob,
                                                     TracedLensFunction.create)
