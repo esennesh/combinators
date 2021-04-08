@@ -5,7 +5,6 @@ from torch.distributions import Categorical, Normal
 import torch
 import torch.nn as nn
 
-from combinators.tracing import TraceDiagram
 from combinators.utils import batch_expand, particle_index
 
 class GaussianClusters(nn.Module):
