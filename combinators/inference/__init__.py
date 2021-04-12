@@ -1,1 +1,1 @@
-__all__ = ['conditioning']
+__all__ = ['conditioning', 'resample']
