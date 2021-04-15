@@ -453,6 +453,18 @@ class LensId(LensSemantics):
         return other
 
 @singledispatch
+def lens_fold(lens: LensSemantics, f):
+    return f(lens)
+
+@lens_fold.register
+def product_fold(lens: LensProduct, f):
+    return f(LensProduct([lens_fold(l, f) for l in lens.lenses]))
+
+@lens_fold.register
+def composite_fold(lens: LensComposite, f):
+    return f(LensComposite([lens_fold(l, f) for l in lens.lenses]))
+
+@singledispatch
 def lens_semantics(box: LensBox):
     return LensFunction(box.name, box.dom, box.cod, box.sample, box.update,
                         data=box.data)
