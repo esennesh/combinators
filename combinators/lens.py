@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from functools import reduce, singledispatch
+from functools import reduce, singledispatch, wraps
 from typing import Sequence
 
 from discopy import cartesian, cat, messages, monoidal
@@ -451,6 +451,41 @@ class LensId(LensSemantics):
             raise cat.AxiomError(messages.does_not_compose(self, other))
 
         return other
+
+def hook(lens, pre_sample=None, pre_update=None, post_sample=None,
+         post_update=None):
+    sample = lens.sample
+    if pre_sample:
+        sample = _prehook_method(sample, pre_sample)
+    if post_sample:
+        sample = _posthook_method(sample, post_sample)
+
+    update = lens.update
+    if pre_update:
+        update = _prehook_method(update, pre_update)
+    if post_update:
+        update = _posthook_method(update, post_update)
+
+    lens.sample = sample
+    lens.update = update
+
+    return lens
+
+def _prehook_method(method, h):
+    @wraps(method)
+    def m(self, *args, **kwargs):
+        args, kwargs = h(method.__self__, *args, **kwargs)
+        return method(*args, **kwargs)
+    m.__self__ = method.__self__
+    return m
+
+def _posthook_method(method, h):
+    @wraps(method)
+    def m(*args, **kwargs):
+        vals = method(*args, **kwargs)
+        return h(method.__self__, vals)
+    m.__self__ = method.__self__
+    return m
 
 @singledispatch
 def lens_fold(lens: LensSemantics, f):
