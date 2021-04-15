@@ -434,7 +434,7 @@ class LensId(LensSemantics):
             args = args + (kwargs,)
         return cartesian.untuplify(*args)
 
-    def update(self, *args):
+    def update(self, *args, **kwargs):
         return args[len(self.dom.upper):]
 
     def then(self, *others):
