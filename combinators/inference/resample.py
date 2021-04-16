@@ -5,7 +5,7 @@ from functools import wraps
 from probtorch import RandomVariable
 import torch
 
-from .. import sampler, tracing, utils
+from .. import lens, sampler, tracing, utils
 
 def collapsed_index_select(tensor, batch_shape, ancestors):
     tensor, unique = utils.batch_collapse(tensor, batch_shape)
@@ -21,33 +21,42 @@ def index_select_rv(rv, batch_shape, ancestors):
                                 **rv.dist_kwargs)
     return result
 
-def resample_box(box):
-    if isinstance(box, tracing.TracedLensBox) and len(box.dom):
-        box_resampler = forward_resampler(box.sample)
-        return tracing.TracedLensBox(box.name, box.dom, box.cod, box_resampler,
-                                     box.update, data=box.data)
-    return box
+class ResamplingFunctor(lens.LensSemanticsFunctor):
+    def __init__(self, root):
+        self._root = root
+        super().__init__(lambda ob: ob, self.arrow)
 
-def forward_resampler(f):
-    @wraps(f)
-    def resampler(*args, **kwargs):
-        self = f.__self__
-        vals, log_weight, p = f(*args, **kwargs)
-        ancestors, log_weight = utils.gumbel_max_resample(log_weight)
+    def arrow(self, f):
+        return lens.lens_fold(f, self.resample_box)
+
+    def resample_box(self, box):
+        if isinstance(box, tracing.TracedLensFunction):
+            return lens.hook(box, post_sample=ResamplingSample(self._root))
+        return box
+
+class ResamplingSample:
+    def __init__(self, root):
+        self.root = root
+
+    def __call__(this, self, vals):
+        log_weight, _ = tracing._trace(this.root).fold()
+        if (log_weight == 0.).all():
+            return vals
+        ancestors, _ = utils.gumbel_max_resample(log_weight)
+        batch_shape = log_weight.shape
 
         vals = list(cartesian.tuplify(vals))
         for i, v in enumerate(vals):
             if isinstance(v, torch.Tensor):
-                vals[i] = collapsed_index_select(v, self.batch_shape, ancestors)
+                vals[i] = collapsed_index_select(v, batch_shape, ancestors)
         vals = cartesian.untuplify(tuple(vals))
 
-        resample = lambda rv: index_select_rv(rv, self.batch_shape, ancestors)
-        p = utils.trace_map(p, resample)
+        self.trace.log_weight = self.trace.log_weight.mean(dim=0, keepdim=True)
+        resample = lambda rv: index_select_rv(rv, batch_shape, ancestors)
+        self.trace.probs = utils.trace_map(self.trace.probs, resample)
+        self.trace.retval = vals
 
-        return vals, log_weight, p
-    return resampler
+        return vals
 
-RESAMPLING_FUNCTOR = tracing.TracedLensFunctor(lambda ob: ob, resample_box)
-
-def resampler(diagram):
-    return RESAMPLING_FUNCTOR(diagram)
+def resampler(semantics):
+    return ResamplingFunctor(semantics)(semantics)

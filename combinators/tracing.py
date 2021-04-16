@@ -177,17 +177,11 @@ class TracedLensFunction(lens.LensFunction):
         self._trace = BoxTrace(None, 0., NestedTrace())
 
     def sample(self, *args, **kwargs):
-        if self.data is not None:
-            kwargs['data'] = self.data
-
         self._trace = BoxTrace(*super().sample(self.trace.probs, *args,
                                                **kwargs))
         return self.trace.retval
 
     def update(self, *args, **kwargs):
-        if self.data is not None:
-            kwargs['data'] = self.data
-
         q, p = utils.split_latent(self.trace.probs)
 
         result, q = super().update(q, *args, **kwargs)
