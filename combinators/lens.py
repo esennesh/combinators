@@ -390,8 +390,8 @@ class LensComposite(LensSemantics):
 
     def __post_init__(self):
         name = reduce(lambda x, y: '%s >> %s' % (str(x), str(y)), self.lenses)
-        monoidal.Box.__init__(self, name, self.lenses[0].dom,
-                              self.lenses[-1].cod)
+        LensSemantics.__init__(self, name, self.lenses[0].dom,
+                               self.lenses[-1].cod)
 
     def sample(self, *args, **kwargs):
         if kwargs:
