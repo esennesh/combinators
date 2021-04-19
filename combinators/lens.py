@@ -432,7 +432,7 @@ class LensComposite(LensSemantics):
 class LensId(LensSemantics):
     def __init__(self, dom):
         assert isinstance(dom, LensTy)
-        monoidal.Box.__init__(self, 'Id(%d)' % len(dom.upper), dom, dom)
+        LensSemantics.__init__(self, 'Id(%d)' % len(dom.upper), dom, dom)
 
     def sample(self, *args, **kwargs):
         if kwargs:
