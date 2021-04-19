@@ -315,7 +315,7 @@ class LensFunction(LensSemantics):
         self._sample = sample
         self._update = update
 
-        monoidal.Box.__init__(self, name, dom, cod, **params)
+        LensSemantics.__init__(self, name, dom, cod, **params)
 
     def sample(self, *args, **kwargs):
         if self.data is not None:
