@@ -337,7 +337,7 @@ class LensProduct(LensSemantics):
         dom = reduce(lambda x, y: x @ y, [lens.dom for lens in self.lenses])
         cod = reduce(lambda x, y: x @ y, [lens.cod for lens in self.lenses])
         name = reduce(lambda x, y: '%s @ %s' % (str(x), str(y)), self.lenses)
-        monoidal.Box.__init__(self, name, dom, cod)
+        LensSemantics.__init__(self, name, dom, cod)
 
     def sample(self, *args, **kwargs):
         if kwargs:
