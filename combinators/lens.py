@@ -248,6 +248,11 @@ DISCARD = LensBox('discard', PRO(1) & PRO(0), LensPRO(0), lambda *x: (),
                   lambda p, *x: ((), p))
 
 class LensSemantics(ABC, monoidal.Box):
+    def __init__(self, name, dom, cod, **params):
+        if 'data' not in params:
+            params['data'] = {}
+        monoidal.Box.__init__(self, name, dom, cod, **params)
+
     def __call__(self, *args, **kwargs):
         return self.sample(*args, **kwargs)
 
