@@ -84,7 +84,7 @@ class ImportanceSampler:
         args, kwargs = self._expand_args(*args, **kwargs)
         return self.target.update(q, *args, **kwargs)
 
-def importance_box(name, target, proposal, batch_shape, dom, cod, data=None):
+def importance_box(name, target, proposal, batch_shape, dom, cod, data={}):
     sampler = ImportanceSampler(target, proposal, batch_shape)
     return TracedLensBox(name, dom, cod, sampler.sample, sampler.update,
                          data=data)
