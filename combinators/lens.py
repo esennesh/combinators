@@ -504,9 +504,12 @@ def product_fold(lens: LensProduct, f):
 def composite_fold(lens: LensComposite, f):
     return f(LensComposite([lens_fold(l, f) for l in lens.lenses]))
 
-@singledispatch
-def lens_semantics(box: LensBox):
-    return LensFunction(box.name, box.dom, box.cod, box.sample, box.update,
-                        data=box.data)
+class BoxSemanticsFunctor(LensSemanticsFunctor):
+    def __init__(self):
+        super().__init__(lambda lob: lob, self.box_semantics)
 
-SEMANTIC_FUNCTOR = LensSemanticsFunctor(lambda lob: lob, lens_semantics)
+    def box_semantics(self, box):
+        return LensFunction(box.name, box.dom, box.cod, box.sample, box.update,
+                            data=box.data)
+
+SEMANTIC_FUNCTOR = BoxSemanticsFunctor()
