@@ -321,14 +321,14 @@ class LensFunction(LensSemantics):
         LensSemantics.__init__(self, name, dom, cod, **params)
 
     def sample(self, *args, **kwargs):
-        if self.data is not None:
-            kwargs['data'] = self.data
+        if 'data' in self.data:
+            kwargs['data'] = self.data['data']
 
         return self._sample(*args, **kwargs)
 
     def update(self, *args, **kwargs):
-        if self.data is not None:
-            kwargs['data'] = self.data
+        if 'data' in self.data:
+            kwargs['data'] = self.data['data']
 
         return self._update(*args, **kwargs)
 
