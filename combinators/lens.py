@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from functools import reduce, singledispatch, wraps
+from functools import reduce, wraps
 from typing import Sequence
 
 from discopy import cartesian, cat, messages, monoidal
@@ -163,7 +163,7 @@ class LensSemanticsFunctor(monoidal.Functor):
         super().__init__(ob, ar, ob_factory=LensTy, ar_factory=LensSemantics)
 
 class LensBox(monoidal.Box, LensDiagram):
-    def __init__(self, name, dom, cod, sample, update, data=None):
+    def __init__(self, name, dom, cod, sample, update, data={}):
         assert isinstance(dom, LensTy)
         assert isinstance(cod, LensTy)
         self._sample = sample
@@ -181,7 +181,7 @@ class LensBox(monoidal.Box, LensDiagram):
 
     def condition(self, data=None):
         return self.__class__(self.name, self.dom, self.cod, self.sample,
-                              self.update, data=data)
+                              self.update, data={'data': data, **self.data})
 
 class Unit(LensBox):
     def __init__(self, val, cod):
@@ -248,6 +248,11 @@ DISCARD = LensBox('discard', PRO(1) & PRO(0), LensPRO(0), lambda *x: (),
                   lambda p, *x: ((), p))
 
 class LensSemantics(ABC, monoidal.Box):
+    def __init__(self, name, dom, cod, **params):
+        if 'data' not in params:
+            params['data'] = {}
+        monoidal.Box.__init__(self, name, dom, cod, **params)
+
     def __call__(self, *args, **kwargs):
         return self.sample(*args, **kwargs)
 
@@ -302,6 +307,9 @@ class LensSemantics(ABC, monoidal.Box):
             return lenses[0]
         return LensProduct(lenses)
 
+    def fold(self, f):
+        return f(self)
+
 class LensFunction(LensSemantics):
     def __init__(self, name, dom, cod, sample, update, **params):
         assert isinstance(dom, LensTy)
@@ -310,17 +318,17 @@ class LensFunction(LensSemantics):
         self._sample = sample
         self._update = update
 
-        monoidal.Box.__init__(self, name, dom, cod, **params)
+        LensSemantics.__init__(self, name, dom, cod, **params)
 
     def sample(self, *args, **kwargs):
-        if self.data is not None:
-            kwargs['data'] = self.data
+        if 'data' in self.data:
+            kwargs['data'] = self.data['data']
 
         return self._sample(*args, **kwargs)
 
     def update(self, *args, **kwargs):
-        if self.data is not None:
-            kwargs['data'] = self.data
+        if 'data' in self.data:
+            kwargs['data'] = self.data['data']
 
         return self._update(*args, **kwargs)
 
@@ -332,7 +340,7 @@ class LensProduct(LensSemantics):
         dom = reduce(lambda x, y: x @ y, [lens.dom for lens in self.lenses])
         cod = reduce(lambda x, y: x @ y, [lens.cod for lens in self.lenses])
         name = reduce(lambda x, y: '%s @ %s' % (str(x), str(y)), self.lenses)
-        monoidal.Box.__init__(self, name, dom, cod)
+        LensSemantics.__init__(self, name, dom, cod)
 
     def sample(self, *args, **kwargs):
         if kwargs:
@@ -379,14 +387,17 @@ class LensProduct(LensSemantics):
 
         return LensProduct(self.lenses + [other])
 
+    def fold(self, f):
+        return f(LensProduct([l.fold(f) for l in self.lenses]))
+
 @dataclass
 class LensComposite(LensSemantics):
     lenses: Sequence[LensSemantics]
 
     def __post_init__(self):
         name = reduce(lambda x, y: '%s >> %s' % (str(x), str(y)), self.lenses)
-        monoidal.Box.__init__(self, name, self.lenses[0].dom,
-                              self.lenses[-1].cod)
+        LensSemantics.__init__(self, name, self.lenses[0].dom,
+                               self.lenses[-1].cod)
 
     def sample(self, *args, **kwargs):
         if kwargs:
@@ -424,10 +435,13 @@ class LensComposite(LensSemantics):
 
         return LensComposite(self.lenses + [other])
 
+    def fold(self, f):
+        return f(LensComposite([l.fold(f) for l in self.lenses]))
+
 class LensId(LensSemantics):
     def __init__(self, dom):
         assert isinstance(dom, LensTy)
-        monoidal.Box.__init__(self, 'Id(%d)' % len(dom.upper), dom, dom)
+        LensSemantics.__init__(self, 'Id(%d)' % len(dom.upper), dom, dom)
 
     def sample(self, *args, **kwargs):
         if kwargs:
@@ -487,21 +501,12 @@ def _posthook_method(method, h):
     m.__self__ = method.__self__
     return m
 
-@singledispatch
-def lens_fold(lens: LensSemantics, f):
-    return f(lens)
+class BoxSemanticsFunctor(LensSemanticsFunctor):
+    def __init__(self):
+        super().__init__(lambda lob: lob, self.box_semantics)
 
-@lens_fold.register
-def product_fold(lens: LensProduct, f):
-    return f(LensProduct([lens_fold(l, f) for l in lens.lenses]))
+    def box_semantics(self, box):
+        return LensFunction(box.name, box.dom, box.cod, box.sample, box.update,
+                            data=box.data)
 
-@lens_fold.register
-def composite_fold(lens: LensComposite, f):
-    return f(LensComposite([lens_fold(l, f) for l in lens.lenses]))
-
-@singledispatch
-def lens_semantics(box: LensBox):
-    return LensFunction(box.name, box.dom, box.cod, box.sample, box.update,
-                        data=box.data)
-
-SEMANTIC_FUNCTOR = LensSemanticsFunctor(lambda lob: lob, lens_semantics)
+SEMANTIC_FUNCTOR = BoxSemanticsFunctor()

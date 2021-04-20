@@ -117,11 +117,14 @@ class TracedLensDiagram(lens.LensDiagram):
             vals = vals + (kwargs,)
 
         result = semantics.sample(*vals)
-        return result, _trace(semantics)
+        return result, semantics.trace()
 
     @staticmethod
     def clear(semantics):
-        _clear(semantics)
+        semantics.clear()
+
+    def compile(self):
+        return TRACED_SEMANTIC_FUNCTOR(self)
 
     def __call__(self, *vals, **kwargs):
         return TracedLensDiagram.trace(self.compile(), *vals, **kwargs)
@@ -165,20 +168,20 @@ class TracedLensBox(lens.LensBox, TracedLensDiagram):
 
 class TracedLensFunction(lens.LensFunction):
     def __init__(self, name, dom, cod, sample, update, **kwargs):
-        self._trace = None
+        kwargs['data'] = {'trace': None, **kwargs.get('data', {})}
         super().__init__(name, dom, cod, sample, update, **kwargs)
         self.clear()
 
     @property
     def trace(self):
-        return self._trace
+        return self.data['trace']
 
     def clear(self):
-        self._trace = BoxTrace(None, 0., NestedTrace())
+        self.data['trace'] = BoxTrace(None, 0., NestedTrace())
 
     def sample(self, *args, **kwargs):
-        self._trace = BoxTrace(*super().sample(self.trace.probs, *args,
-                                               **kwargs))
+        self.data['trace'] = BoxTrace(*super().sample(self.trace.probs, *args,
+                                                      **kwargs))
         return self.trace.retval
 
     def update(self, *args, **kwargs):
@@ -187,18 +190,24 @@ class TracedLensFunction(lens.LensFunction):
         result, q = super().update(q, *args, **kwargs)
         assert all(not q[k].observed for k in q)
 
-        self._trace.retval = None
-        self._trace.probs = utils.join_traces(q, p)
+        self.data['trace'].retval = None
+        self.data['trace'].probs = utils.join_traces(q, p)
         return result
 
-@lens.lens_semantics.register
-def _traced_lens_semantics(box: TracedLensBox):
-    return TracedLensFunction(box.name, box.dom, box.cod, box.sample,
-                              box.update, data=box.data)
+class TracedBoxSemanticsFunctor(lens.BoxSemanticsFunctor):
+    def box_semantics(self, box):
+        if isinstance(box, TracedLensBox):
+            return TracedLensFunction(box.name, box.dom, box.cod, box.sample,
+                                      box.update, data=box.data)
+        return super().box_semantics(box)
+
+TRACED_SEMANTIC_FUNCTOR = TracedBoxSemanticsFunctor()
 
 @singledispatch
 def _trace(f: lens.LensSemantics):
     return EmptyTrace(f.dom, f.cod)
+
+lens.LensSemantics.trace = _trace
 
 @_trace.register
 def _(f: lens.LensProduct):
@@ -215,6 +224,8 @@ def _(f: TracedLensFunction):
 @singledispatch
 def _clear(_: lens.LensSemantics):
     pass
+
+lens.LensSemantics.clear = _clear
 
 @_clear.register
 def _(f: lens.LensProduct):
