@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from functools import reduce, singledispatch, wraps
+from functools import reduce, wraps
 from typing import Sequence
 
 from discopy import cartesian, cat, messages, monoidal
