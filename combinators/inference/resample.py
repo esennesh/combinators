@@ -27,7 +27,7 @@ class ResamplingFunctor(lens.LensSemanticsFunctor):
         super().__init__(lambda ob: ob, self.arrow)
 
     def arrow(self, f):
-        return lens.lens_fold(f, self.resample_box)
+        return f.fold(self.resample_box)
 
     def resample_box(self, box):
         if isinstance(box, tracing.TracedLensFunction):
