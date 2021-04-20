@@ -307,6 +307,9 @@ class LensSemantics(ABC, monoidal.Box):
             return lenses[0]
         return LensProduct(lenses)
 
+    def fold(self, f):
+        return f(self)
+
 class LensFunction(LensSemantics):
     def __init__(self, name, dom, cod, sample, update, **params):
         assert isinstance(dom, LensTy)
@@ -384,6 +387,9 @@ class LensProduct(LensSemantics):
 
         return LensProduct(self.lenses + [other])
 
+    def fold(self, f):
+        return f(LensProduct([l.fold(f) for l in self.lenses]))
+
 @dataclass
 class LensComposite(LensSemantics):
     lenses: Sequence[LensSemantics]
@@ -428,6 +434,9 @@ class LensComposite(LensSemantics):
             raise cat.AxiomError(messages.does_not_compose(self, other))
 
         return LensComposite(self.lenses + [other])
+
+    def fold(self, f):
+        return f(LensComposite([l.fold(f) for l in self.lenses]))
 
 class LensId(LensSemantics):
     def __init__(self, dom):
@@ -491,18 +500,6 @@ def _posthook_method(method, h):
         return h(method.__self__, vals)
     m.__self__ = method.__self__
     return m
-
-@singledispatch
-def lens_fold(lens: LensSemantics, f):
-    return f(lens)
-
-@lens_fold.register
-def product_fold(lens: LensProduct, f):
-    return f(LensProduct([lens_fold(l, f) for l in lens.lenses]))
-
-@lens_fold.register
-def composite_fold(lens: LensComposite, f):
-    return f(LensComposite([lens_fold(l, f) for l in lens.lenses]))
 
 class BoxSemanticsFunctor(LensSemanticsFunctor):
     def __init__(self):
