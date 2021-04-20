@@ -123,6 +123,9 @@ class TracedLensDiagram(lens.LensDiagram):
     def clear(semantics):
         _clear(semantics)
 
+    def compile(self):
+        return TRACED_SEMANTIC_FUNCTOR(self)
+
     def __call__(self, *vals, **kwargs):
         return TracedLensDiagram.trace(self.compile(), *vals, **kwargs)
 
