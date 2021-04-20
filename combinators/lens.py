@@ -181,7 +181,7 @@ class LensBox(monoidal.Box, LensDiagram):
 
     def condition(self, data=None):
         return self.__class__(self.name, self.dom, self.cod, self.sample,
-                              self.update, data=data)
+                              self.update, data={'data': data, **self.data})
 
 class Unit(LensBox):
     def __init__(self, val, cod):
