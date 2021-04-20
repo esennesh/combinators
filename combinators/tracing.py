@@ -168,20 +168,20 @@ class TracedLensBox(lens.LensBox, TracedLensDiagram):
 
 class TracedLensFunction(lens.LensFunction):
     def __init__(self, name, dom, cod, sample, update, **kwargs):
-        self._trace = None
+        kwargs['data'] = {'trace': None, **kwargs.get('data', {})}
         super().__init__(name, dom, cod, sample, update, **kwargs)
         self.clear()
 
     @property
     def trace(self):
-        return self._trace
+        return self.data['trace']
 
     def clear(self):
-        self._trace = BoxTrace(None, 0., NestedTrace())
+        self.data['trace'] = BoxTrace(None, 0., NestedTrace())
 
     def sample(self, *args, **kwargs):
-        self._trace = BoxTrace(*super().sample(self.trace.probs, *args,
-                                               **kwargs))
+        self.data['trace'] = BoxTrace(*super().sample(self.trace.probs, *args,
+                                                      **kwargs))
         return self.trace.retval
 
     def update(self, *args, **kwargs):
@@ -190,8 +190,8 @@ class TracedLensFunction(lens.LensFunction):
         result, q = super().update(q, *args, **kwargs)
         assert all(not q[k].observed for k in q)
 
-        self._trace.retval = None
-        self._trace.probs = utils.join_traces(q, p)
+        self.data['trace'].retval = None
+        self.data['trace'].probs = utils.join_traces(q, p)
         return result
 
 class TracedBoxSemanticsFunctor(lens.BoxSemanticsFunctor):
