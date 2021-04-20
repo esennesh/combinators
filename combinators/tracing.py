@@ -117,11 +117,11 @@ class TracedLensDiagram(lens.LensDiagram):
             vals = vals + (kwargs,)
 
         result = semantics.sample(*vals)
-        return result, _trace(semantics)
+        return result, semantics.trace()
 
     @staticmethod
     def clear(semantics):
-        _clear(semantics)
+        semantics.clear()
 
     def compile(self):
         return TRACED_SEMANTIC_FUNCTOR(self)
