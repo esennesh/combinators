@@ -205,17 +205,20 @@ TRACED_SEMANTIC_FUNCTOR = TracedBoxSemanticsFunctor()
 
 @singledispatch
 def _trace(f: lens.LensSemantics):
-    return EmptyTrace(f.dom, f.cod)
+    f.data['trace'] = EmptyTrace(f.dom, f.cod)
+    return f.data['trace']
 
 lens.LensSemantics.trace = _trace
 
 @_trace.register
 def _(f: lens.LensProduct):
-    return ProductTrace([_trace(lens) for lens in f.lenses])
+    f.data['trace'] = ProductTrace([_trace(lens) for lens in f.lenses])
+    return f.data['trace']
 
 @_trace.register
 def _(f: lens.LensComposite):
-    return CompositeTrace([_trace(lens) for lens in f.lenses])
+    f.data['trace'] = CompositeTrace([_trace(lens) for lens in f.lenses])
+    return f.data['trace']
 
 @_trace.register
 def _(f: TracedLensFunction):
