@@ -226,17 +226,19 @@ def _(f: TracedLensFunction):
 
 @singledispatch
 def _clear(_: lens.LensSemantics):
-    pass
+    f.data['trace'] = None
 
 lens.LensSemantics.clear = _clear
 
 @_clear.register
 def _(f: lens.LensProduct):
+    f.data['trace'] = None
     for l in f.lenses:
         _clear(l)
 
 @_clear.register
 def _(f: lens.LensComposite):
+    f.data['trace'] = None
     for l in f.lenses:
         _clear(l)
 
