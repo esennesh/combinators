@@ -5,7 +5,7 @@ from functools import wraps
 from probtorch import RandomVariable
 import torch
 
-from .. import lens, sampler, tracing, utils
+from .. import lens, sampler, utils
 
 def collapsed_index_select(tensor, batch_shape, ancestors):
     tensor, unique = utils.batch_collapse(tensor, batch_shape)

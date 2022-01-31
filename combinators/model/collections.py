@@ -3,7 +3,7 @@
 import functools
 from probtorch import Trace
 
-from .. import lens, tracing
+from .. import lens
 
 class TracedCopy:
     def __init__(self, n):
