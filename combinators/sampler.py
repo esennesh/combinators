@@ -1,66 +1,40 @@
 #!/usr/bin/env python3
 
+from functools import reduce
 import inspect
+import probtorch
 import torch
+from discopy import messages, monoidal, wiring
 
-from .tracing import NestedTrace, TracedLensBox
-from . import utils
+from . import lens, utils
 
-class ImportanceSampler:
-    def __init__(self, target, proposal, batch_shape=(1,)):
+class WeightedSampler(torch.nn.Module):
+    def __init__(self, target, batch_shape=(1,)):
         super().__init__()
-        assert callable(target) and hasattr(target, 'update')
-        self._batch_shape = batch_shape
-
-        self.target = target
         sig = inspect.signature(target.forward)
-        target_batching = 'batch_shape' in sig.parameters
+
+        self._batch_shape = batch_shape
         self._pass_data = 'data' in sig.parameters
+        self._pass_batch_shape = 'batch_shape' in sig.parameters
 
-        self.proposal = proposal
-        proposal_batching = False
-        if isinstance(self.proposal, torch.nn.Module):
-            sig = inspect.signature(self.proposal.forward)
-            proposal_batching = 'batch_shape' in sig.parameters
-        elif callable(self.proposal):
-            sig = inspect.signature(self.proposal)
-            proposal_batching = 'batch_shape' in sig.parameters
-
-        self._cache = utils.TensorialCache(1, self._score)
-        self._pass_batch_shape = target_batching or proposal_batching
+        self.add_module('target', target)
 
     @property
     def batch_shape(self):
         return self._batch_shape
 
-    def _expand_args(self, *args, **kwargs):
+    @property
+    def pass_data(self):
+        return self._pass_data
+
+    def expand_args(self, *args, **kwargs):
         args = tuple(utils.batch_expand(arg, self.batch_shape, True)
                      if hasattr(arg, 'expand') else arg for arg in args)
         kwargs = {k: utils.batch_expand(v, self.batch_shape, True)
                      if hasattr(v, 'expand') else v for k, v in kwargs.items()}
         return args, kwargs
 
-    def _sample(self, *args, **kwargs):
-        args, kwargs = self._expand_args(*args, **kwargs)
-        q = NestedTrace()
-
-        if self.proposal is not None:
-            self.proposal(q, *args, **kwargs)
-        result, log_weight, p = self._score(q, *args, **kwargs)
-        args = (p,) + args
-        self._cache[(args, kwargs)] = (result, log_weight, p)
-        return result, log_weight, p
-
-    def _score(self, q, *args, **kwargs):
-        p = NestedTrace(q=q)
-        result = self.target(p, *args, **kwargs)
-
-        log_weight = p.conditioning_factor(self.batch_shape)
-        assert log_weight.shape == self.batch_shape
-
-        return result, log_weight, p
-
-    def sample(self, q, *args, **kwargs):
+    def forward(self, q, *args, **kwargs):
         if args and isinstance(args[-1], dict):
             kwargs = {**args[-1], **kwargs}
             args = args[:-1]
@@ -69,38 +43,119 @@ class ImportanceSampler:
         if not self._pass_data and 'data' in kwargs:
             del kwargs['data']
 
-        if q:
-            args, kwargs = self._expand_args(*args, **kwargs)
-            return self._cache(q, *args, **kwargs)
-        return self._sample(*args, **kwargs)
+        args, kwargs = self.expand_args(*args, **kwargs)
 
-    def clear(self):
-        self._cache.clear()
+        p = probtorch.NestedTrace(q=q)
+        result = self.target(p, *args, **kwargs)
 
-    def update(self, q, *args, **kwargs):
-        if not self._pass_data and 'data' in kwargs:
-            del kwargs['data']
+        device = 'cpu'
+        for v in p.values():
+            device = v.log_prob.device
+            if device != 'cpu':
+                break
+        dims = tuple(range(len(self.batch_shape)))
+        null = torch.zeros(self.batch_shape, device=device)
 
-        args, kwargs = self._expand_args(*args, **kwargs)
-        return self.target.update(q, *args, **kwargs)
+        log_weight = null + p.log_proper_weight(sample_dims=dims)
+        assert log_weight.shape == self.batch_shape
 
-def importance_box(name, target, proposal, batch_shape, dom, cod, data={}):
-    sampler = ImportanceSampler(target, proposal, batch_shape)
-    return TracedLensBox(name, dom, cod, sampler.sample, sampler.update,
-                         data=data)
+        return result, p, log_weight
 
-class VariationalSampler(ImportanceSampler):
-    def __init__(self, target, proposal, mk_optimizer, batch_shape=(1,),
-                 data=None):
-        super().__init__(target, proposal, batch_shape, data)
-        self._optimizer = mk_optimizer(list(target.parameters()) +\
-                                       list(proposal.parameters()))
+class ImportanceSemanticsFunctor(lens.CartesianSemanticsFunctor):
+    @classmethod
+    def semantics(cls, f):
+        if isinstance(f, ImportanceBox):
+            return ImportanceWiringBox(f.name, f.dom, f.cod, f.target,
+                                       f.proposal, data=f.data)
+        return super(ImportanceSemanticsFunctor, cls).semantics(f)
 
-    def update(self, *args, **kwargs):
-        self._optimizer.step()
+class ImportanceBox(lens.Box):
+    IMPORTANCE_SEMANTICS = ImportanceSemanticsFunctor()
+    def __init__(self, name, dom, cod, target, proposal, data={}):
+        assert isinstance(target, torch.nn.Module)
+        self._target = target
+        assert isinstance(proposal, torch.nn.Module)
+        self._proposal = proposal
 
-        return super().update(*args, **kwargs)
+        super().__init__(name, dom, cod, data)
 
-    def clear(self):
-        self._optimizer.zero_grad()
-        super().clear()
+    @property
+    def target(self):
+        return self._target
+
+    @property
+    def proposal(self):
+        return self._proposal
+
+class ImportanceWiringBox(lens.CartesianWiringBox):
+    def __init__(self, name, dom, cod, target, proposal, data={}):
+        assert isinstance(target, torch.nn.Module)
+        self._target = target
+        assert isinstance(proposal, torch.nn.Module)
+        self._proposal = proposal
+        self._cache = utils.TensorialCache(None, self._target.forward)
+
+        super().__init__(name, dom, cod, self.filter, self.smooth, data=data)
+
+    def peek(self):
+        return self._cache.peek()
+
+    def filter(self, *args, **kwargs):
+        if self._target.pass_data:
+            _, data = self._target.expand_args((), **self.data)
+            kwargs = {**data, **kwargs}
+
+        result, _, _ = self._cache(None, *args, **kwargs)
+        return result
+
+    def smooth(self, *args, **kwargs):
+        if self._target.pass_data:
+            _, data = self._target.expand_args((), **self.data)
+            kwargs = {**data, **kwargs}
+        q = probtorch.Trace()
+        feedback = self._proposal.forward(q, *args, **kwargs)
+
+        fwd = args[:len(self.dom.upper)]
+        cached_fwd = (None, *fwd)
+        if (cached_fwd, kwargs) in self._cache:
+            state = self._target.forward(q, *fwd, **kwargs)
+            self._cache[(cached_fwd, {})] = state
+
+        return feedback
+
+def importance_box(name, target, batch_shape, proposal, dom, cod, data={}):
+    assert not isinstance(dom, lens.Ty) and not isinstance(cod, lens.Ty)
+    dom = dom & monoidal.PRO(len(dom))
+    cod = cod & monoidal.PRO(len(cod))
+    target = WeightedSampler(target, batch_shape)
+
+    return ImportanceBox(name, dom, cod, target, proposal, data=data)
+
+def compile(diagram):
+    return ImportanceBox.IMPORTANCE_SEMANTICS(diagram)
+
+def filter(diagram, *args, **kwargs):
+    if not isinstance(diagram, wiring.Wiring):
+        diagram = compile(diagram)
+    return lens.getter(diagram)(*args, **kwargs)
+
+def smooth(diagram, *args, **kwargs):
+    if not isinstance(diagram, wiring.Wiring):
+        diagram = compile(diagram)
+    return lens.putter(diagram)(*args, **kwargs)
+
+def __trace_falgebra__(f):
+    if isinstance(f, ImportanceWiringBox):
+        _, (_, p, log_weight) = f.peek()
+        return p, log_weight
+    if isinstance(f, (wiring.Id, lens.CartesianWiringBox)):
+        return probtorch.Trace(), 0.
+    if isinstance(f, wiring.Sequential):
+        return reduce(utils.join_tracing_states, f.arrows)
+    if isinstance(f, wiring.Parallel):
+        return reduce(utils.join_tracing_states, f.factors)
+    raise TypeError(messages.type_err(wiring.Wiring, f))
+
+def trace(diagram):
+    assert isinstance(diagram, wiring.Wiring)
+    return diagram.collapse(__trace_falgebra__)
