@@ -88,15 +88,15 @@ class SampleCluster(nn.Module):
         z = p.variable(Categorical, pi, name='z')
         return particle_index(mus, z), particle_index(sigmas, z)
 
-    def update(self, p, mus, sigmas, xs):
+class AssignmentGibbs(nn.Module):
+    def forward(self, q, mus, sigmas, xs):
         def log_likelihood(k):
-            return Normal(mus[:, k], sigmas[:, k]).log_prob(xs).sum(-1)
+            return Normal(mus[:, k], sigmas[:, k]).log_prob(xs).sum(dim=-1)
         log_conditionals = torch.stack([log_likelihood(k) for k
                                         in range(mus.shape[1])], dim=-1)
 
-        q = probtorch.Trace()
         z = q.variable(Categorical, logits=log_conditionals, name='z')
-        return (z, xs), q
+        return (z, xs)
 
 class SamplePoint(nn.Module):
     def forward(self, p, mu, sigma, data=None):
