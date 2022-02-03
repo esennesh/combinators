@@ -64,6 +64,9 @@ class TensorialCache:
     def __bool__(self):
         return len(self) > 0
 
+    def peek(self):
+        return self._cache[-1]
+
 def tensorial_eq(x, y):
     if isinstance(x, torch.Tensor) and isinstance(y, torch.Tensor):
         return (x == y).all()
