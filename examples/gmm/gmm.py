@@ -36,9 +36,25 @@ class GaussianClusters(nn.Module):
 
         return mus, sigmas
 
-    def update(self, p, zs, xs):
-        q = probtorch.Trace()
+class ClustersGibbs(nn.Module):
+    def __init__(self, num_clusters, dim=2, mu=None, concentration=None,
+                 rate=None):
+        super().__init__()
+        self._num_clusters = num_clusters
+        self._dim = dim
 
+        if mu is None:
+            mu = torch.zeros(self._num_clusters, self._dim)
+        if concentration is None:
+            concentration = torch.ones(self._num_clusters, self._dim) * 0.9
+        if rate is None:
+            rate = torch.ones(self._num_clusters, self._dim) * 0.9
+
+        self.register_buffer('mu', mu)
+        self.register_buffer('concentration', concentration)
+        self.register_buffer('rate', rate)
+
+    def forward(self, q, zs, xs):
         zsk = nn.functional.one_hot(zs, self._num_clusters).unsqueeze(-1)
         xsk = xs.unsqueeze(2).expand(xs.shape[0], xs.shape[1],
                                      self._num_clusters, xs.shape[2]) * zsk
@@ -56,7 +72,7 @@ class GaussianClusters(nn.Module):
         mean_mu = nks * sample_means / (1 + nks)
         q.normal(mean_mu, (1. / mean_tau).sqrt(), name='mu')
 
-        return (), q
+        return ()
 
 class SampleCluster(nn.Module):
     def __init__(self, num_clusters, num_samples):
