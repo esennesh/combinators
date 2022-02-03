@@ -103,5 +103,6 @@ class SamplePoint(nn.Module):
         x = p.normal(mu, sigma, name='x', value=data)
         return x
 
-    def update(self, p, mu, sigma, data):
-        return data, p
+class ObservationGibbs(nn.Module):
+    def forward(self, q, mu, sigma, data=None):
+        return data
