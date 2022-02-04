@@ -108,6 +108,7 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
         result, _, _ = self._cache(None, *args, **kwargs)
         return result
 
+    # TODO: incorporate replay and the MH incremental weight
     def smooth(self, *args, **kwargs):
         if self._target.pass_data:
             _, data = self._target.expand_args((), **self.data)
