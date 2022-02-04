@@ -108,19 +108,36 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
         result, _, _ = self._cache(None, *args, **kwargs)
         return result
 
-    # TODO: incorporate replay and the MH incremental weight
+    # TODO: incorporate replay
     def smooth(self, *args, **kwargs):
         if self._target.pass_data:
             _, data = self._target.expand_args((), **self.data)
             kwargs = {**data, **kwargs}
-        q = probtorch.Trace()
-        feedback = self._proposal.forward(q, *args, **kwargs)
-
+        dims = tuple(range(len(self._target.batch_shape)))
         fwd = args[:len(self.dom.upper)]
         cached_fwd = (None, *fwd)
-        if (cached_fwd, kwargs) in self._cache:
-            state = self._target.forward(q, *fwd, **kwargs)
-            self._cache[(cached_fwd, {})] = state
+
+        # Retrieve the stored target trace from the cache, initializing by
+        # filtering if necessary.
+        _, p, log_v = self._cache(*cached_fwd, **kwargs)
+        log_orig = p.log_joint(sample_dims=dims)
+
+        # Rescore the original trace under the proposal kernel
+        q = probtorch.NestedTrace(q=p)
+        self._proposal.forward(q, *args, **kwargs)
+        log_rk = q.log_joint(sample_dims=dims)
+
+        # Draw the new trace and the feedback from the proposal kernel
+        q = probtorch.Trace()
+        feedback = self._proposal.forward(q, *args, **kwargs)
+        log_fk = q.log_joint(sample_dims=dims)
+
+        # Score the new trace under the target program
+        result, p, _ = self._target.forward(q, *fwd, **kwargs)
+        log_update = p.log_joint(sample_dims=dims)
+
+        log_v = log_v + (log_update + log_rk) - (log_orig + log_fk)
+        self._cache[(cached_fwd, kwargs)] = (result, p, log_v)
 
         return feedback
 
