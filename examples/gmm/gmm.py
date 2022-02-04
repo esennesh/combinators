@@ -36,9 +36,25 @@ class GaussianClusters(nn.Module):
 
         return mus, sigmas
 
-    def update(self, p, zs, xs):
-        q = probtorch.Trace()
+class ClustersGibbs(nn.Module):
+    def __init__(self, num_clusters, dim=2, mu=None, concentration=None,
+                 rate=None):
+        super().__init__()
+        self._num_clusters = num_clusters
+        self._dim = dim
 
+        if mu is None:
+            mu = torch.zeros(self._num_clusters, self._dim)
+        if concentration is None:
+            concentration = torch.ones(self._num_clusters, self._dim) * 0.9
+        if rate is None:
+            rate = torch.ones(self._num_clusters, self._dim) * 0.9
+
+        self.register_buffer('mu', mu)
+        self.register_buffer('concentration', concentration)
+        self.register_buffer('rate', rate)
+
+    def forward(self, q, zs, xs):
         zsk = nn.functional.one_hot(zs, self._num_clusters).unsqueeze(-1)
         xsk = xs.unsqueeze(2).expand(xs.shape[0], xs.shape[1],
                                      self._num_clusters, xs.shape[2]) * zsk
@@ -56,7 +72,7 @@ class GaussianClusters(nn.Module):
         mean_mu = nks * sample_means / (1 + nks)
         q.normal(mean_mu, (1. / mean_tau).sqrt(), name='mu')
 
-        return (), q
+        return ()
 
 class SampleCluster(nn.Module):
     def __init__(self, num_clusters, num_samples):
@@ -72,20 +88,21 @@ class SampleCluster(nn.Module):
         z = p.variable(Categorical, pi, name='z')
         return particle_index(mus, z), particle_index(sigmas, z)
 
-    def update(self, p, mus, sigmas, xs):
+class AssignmentGibbs(nn.Module):
+    def forward(self, q, mus, sigmas, xs):
         def log_likelihood(k):
-            return Normal(mus[:, k], sigmas[:, k]).log_prob(xs).sum(-1)
+            return Normal(mus[:, k], sigmas[:, k]).log_prob(xs).sum(dim=-1)
         log_conditionals = torch.stack([log_likelihood(k) for k
                                         in range(mus.shape[1])], dim=-1)
 
-        q = probtorch.Trace()
         z = q.variable(Categorical, logits=log_conditionals, name='z')
-        return (z, xs), q
+        return (z, xs)
 
 class SamplePoint(nn.Module):
     def forward(self, p, mu, sigma, data=None):
         x = p.normal(mu, sigma, name='x', value=data)
         return x
 
-    def update(self, p, mu, sigma, data):
-        return data, p
+class ObservationGibbs(nn.Module):
+    def forward(self, q, mu, sigma, data=None):
+        return data

@@ -64,6 +64,9 @@ class TensorialCache:
     def __bool__(self):
         return len(self) > 0
 
+    def peek(self):
+        return self._cache[-1]
+
 def tensorial_eq(x, y):
     if isinstance(x, torch.Tensor) and isinstance(y, torch.Tensor):
         return (x == y).all()
@@ -74,9 +77,9 @@ def tensorial_eq(x, y):
     return x == y
 
 def join_tracing_states(statex, statey, unary_concat=True):
-    lwx, tx = statex
-    lwy, ty = statey
-    return (lwx + lwy, join_traces(tx, ty, unary_concat))
+    tx, lwx = statex
+    ty, lwy = statey
+    return (join_traces(tx, ty, unary_concat), lwx + lwy)
 
 def batch_where(condition, yes, no, batch_shape):
     yes, unique = batch_collapse(yes, batch_shape)

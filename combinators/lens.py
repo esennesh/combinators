@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
 
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from abc import abstractmethod
 from functools import reduce, wraps
-from typing import Sequence
 
-from discopy import cartesian, cat, messages, monoidal
-from discopy.monoidal import PRO, Sum, Ty
+from discopy import cartesian, cat, messages, monoidal, wiring
 
 LENS_OB_DESCRIPTION = r'$\binom{%s}{%s}$'
 
-class LensOb(cat.Ob):
-    def __init__(self, upper=PRO(1), lower=PRO(1)):
+class Ob(cat.Ob):
+    def __init__(self, upper=monoidal.PRO(1), lower=monoidal.PRO(1)):
         if not isinstance(upper, cat.Ob):
             upper = cat.Ob(str(upper))
         self._upper = upper
@@ -32,104 +29,117 @@ class LensOb(cat.Ob):
         return self._lower
 
     def __eq__(self, other):
-        if not isinstance(other, LensOb):
+        if not isinstance(other, Ob):
             return False
         return self.upper == other.upper and self.lower == other.lower
 
     def __hash__(self):
         return hash(repr(self))
 
-cat.Ob.__and__ = LensOb
+cat.Ob.__and__ = Ob
 
-class LensTy(Ty):
+class Ty(monoidal.Ty):
     def __init__(self, *objects):
-        assert all(isinstance(ob, LensOb) for ob in objects)
+        assert all(isinstance(ob, Ob) for ob in objects)
         super().__init__(*objects)
 
     @staticmethod
     def named(*names):
-        return LensTy(*[LensOb(name, name + "-prime") for name in names])
+        return Ty(*[Ob(name, name + "-prime") for name in names])
 
     @staticmethod
     def upgrade(old):
-        return LensTy(*old.objects)
+        return Ty(*old.objects)
 
     @property
     def upper(self):
         return reduce(lambda x, y: x @ y, [ty(ob.upper) for ob in self.objects],
-                      Ty())
+                      monoidal.Ty())
 
     @property
     def lower(self):
         return reduce(lambda x, y: x @ y, [ty(ob.lower) for ob in self.objects],
-                      Ty())
+                      monoidal.Ty())
 
 def ty(t):
     assert isinstance(t, cat.Ob)
-    if isinstance(t, Ty):
+    if isinstance(t, monoidal.Ty):
         return t
-    return Ty(t)
+    return monoidal.Ty(t)
 
 def lens_type(uppers, lowers):
-    assert isinstance(uppers, Ty) and isinstance(lowers, Ty)
+    assert isinstance(uppers, monoidal.Ty) and isinstance(lowers, monoidal.Ty)
     uppers, lowers = uppers.objects, lowers.objects
     if len(uppers) > len(lowers):
-        lowers = lowers + [PRO(0) for _ in range(len(uppers) - len(lowers))]
+        lowers = lowers + [monoidal.PRO(0) for _ in
+                           range(len(uppers) - len(lowers))]
     elif len(lowers) > len(uppers):
-        uppers = uppers + [PRO(0) for _ in range(len(lowers) - len(uppers))]
+        uppers = uppers + [monoidal.PRO(0) for _ in
+                           range(len(lowers) - len(uppers))]
 
-    return LensTy(*[LensOb(u, l) for u, l in zip(uppers, lowers)])
+    return Ty(*[Ob(u, l) for u, l in zip(uppers, lowers)])
 
 monoidal.Ty.__and__ = lens_type
 
-class LensPRO(LensTy):
+class PRO(Ty):
     def __init__(self, n=0):
-        if isinstance(n, LensPRO):
+        if isinstance(n, PRO):
             n = len(n)
         if isinstance(n, cat.Ob):
             n = 1
-        lens_ob = LensOb(cat.Ob(1), cat.Ob(1))
+        lens_ob = Ob(cat.Ob(1), cat.Ob(1))
         super().__init__(*(n * [lens_ob]))
 
     def __repr__(self):
-        return "LensPRO({})".format(len(self))
+        return "lens.PRO({})".format(len(self))
+
+class CartesianSemanticsFunctor(wiring.Functor):
+    def __init__(self):
+        super().__init__(lambda t: t, self.semantics)
+
+    @classmethod
+    def semantics(cls, f):
+        return CartesianWiringBox(f.name, f.dom, f.cod, f.getf, f.putf,
+                                  data=f.data)
 
 @monoidal.Diagram.subclass
-class LensDiagram(monoidal.Diagram):
+class Diagram(monoidal.Diagram):
     """
     Implements diagrams of lenses composed of Python functions
     """
-    def __init__(self, dom, cod, boxes, offsets, layers=None):
-        assert isinstance(dom, LensTy)
-        assert isinstance(cod, LensTy)
-        super().__init__(dom, cod, boxes, offsets, layers=layers)
+    CARTESIAN_SEMANTICS = CartesianSemanticsFunctor()
+    CARTESIAN_GET = wiring.Functor(lambda t: monoidal.PRO(len(t)),
+                                   lambda f: f.get(), monoidal.PRO,
+                                   cartesian.Diagram)
 
-    def compile(self):
-        return SEMANTIC_FUNCTOR(self)
+    def __init__(self, dom, cod, boxes, offsets, layers=None):
+        assert isinstance(dom, Ty)
+        assert isinstance(cod, Ty)
+        super().__init__(dom, cod, boxes, offsets, layers=layers)
 
     def __call__(self, *vals, **kwargs):
         """
-        Call method implemented using the semantic Functor.
+        Get method for Cartesian lenses.
         """
         if kwargs:
             vals = vals + (kwargs,)
-        semantics = self.compile()
-        return semantics(*vals)
+        get = Diagram.CARTESIAN_GET(Diagram.CARTESIAN_SEMANTICS(self))
+        return get(*vals)
 
-    def update(self, *vals, **kwargs):
+    def put(self, *vals, **kwargs):
         """
-        Update method implemented using the semantic functor.
+        Put method for Cartesian lenses.
         """
         if kwargs:
             vals = vals + (kwargs,)
-        semantics = self.compile()
-        return semantics.update(*vals)
+        put = Diagram.CARTESIAN_SEMANTICS(self).collapse(__put_falg__)
+        return put(*vals)
 
     @staticmethod
-    def id(dom=LensTy()):
+    def id(dom=Ty()):
         return Id(dom)
 
-class Id(LensDiagram):
+class Id(Diagram):
     """
     Implements identity diagrams on dom inputs.
     """
@@ -137,7 +147,7 @@ class Id(LensDiagram):
         """
         >>> assert Diagram.id(42) == Id(42) == Diagram(42, 42, [], [])
         """
-        assert isinstance(dom, LensTy)
+        assert isinstance(dom, Ty)
         super().__init__(dom, dom, [], [], layers=None)
 
     def __repr__(self):
@@ -154,51 +164,50 @@ class Id(LensDiagram):
         """
         return repr(self)
 
-class LensFunctor(monoidal.Functor):
+class Functor(monoidal.Functor):
     def __init__(self, ob, ar):
-        super().__init__(ob, ar, ob_factory=LensTy, ar_factory=LensDiagram)
+        super().__init__(ob, ar, ob_factory=Ty, ar_factory=Diagram)
 
-class LensSemanticsFunctor(monoidal.Functor):
-    def __init__(self, ob, ar):
-        super().__init__(ob, ar, ob_factory=LensTy, ar_factory=LensSemantics)
-
-class LensBox(monoidal.Box, LensDiagram):
-    def __init__(self, name, dom, cod, sample, update, data={}):
-        assert isinstance(dom, LensTy)
-        assert isinstance(cod, LensTy)
-        self._sample = sample
-        self._update = update
+class Box(monoidal.Box, Diagram):
+    def __init__(self, name, dom, cod, data={}):
+        if not isinstance(dom, Ty):
+            raise TypeError(messages.type_err(Ty, dom))
+        if not isinstance(cod, Ty):
+            raise TypeError(messages.type_err(Ty, cod))
         monoidal.Box.__init__(self, name, dom, cod, data=data)
-        LensDiagram.__init__(self, dom, cod, [self], [0])
+        Diagram.__init__(self, dom, cod, [self], [0])
+
+class CartesianBox(Box):
+    def __init__(self, name, dom, cod, getf, putf, data={}):
+        assert callable(getf) and callable(putf)
+        self._getf = getf
+        self._putf = putf
+        super().__init__(name, dom, cod, data=data)
 
     @property
-    def sample(self):
-        return self._sample
+    def getf(self):
+        return self._getf
 
     @property
-    def update(self):
-        return self._update
+    def putf(self):
+        return self._putf
 
-    def condition(self, data=None):
-        return self.__class__(self.name, self.dom, self.cod, self.sample,
-                              self.update, data={'data': data, **self.data})
-
-class Unit(LensBox):
+class Unit(CartesianBox):
     def __init__(self, val, cod):
         def unit(val=val):
             return val
-        super().__init__('Unit(%d)' % len(cod), LensPRO(0), cod, unit,
+        super().__init__('Unit(%d)' % len(cod), PRO(0), cod, unit,
                          lambda *args: ())
 
-class Copy(LensDiagram):
+class Copy(Diagram):
     """
     Implements the copy function from dom to 2*dom.
     >>> assert Copy(3)(0, 1, 2) == (0, 1, 2, 0, 1, 2)
     """
     def __init__(self, dom):
-        if not isinstance(dom, LensTy):
-            dom = LensPRO(dom)
-        tensor_id = Id(LensPRO(0))
+        if not isinstance(dom, Ty):
+            dom = PRO(dom)
+        tensor_id = Id(PRO(0))
         result = tensor_id
         for ob in dom:
             result = result @ _copy(ob)
@@ -209,263 +218,45 @@ class Copy(LensDiagram):
         super().__init__(dom, dom @ dom, result.boxes, result.offsets,
                          layers=result.layers)
 
-class Swap(LensDiagram):
+class Swap(Diagram):
     def __init__(self, left, right):
-        if not isinstance(left, LensTy):
-            left = LensPRO(left)
-        if not isinstance(right, LensTy):
-            right = LensPRO(right)
+        if not isinstance(left, Ty):
+            left = PRO(left)
+        if not isinstance(right, Ty):
+            right = PRO(right)
         dom, cod = left @ right, right @ left
         boxes = [SWAP for i in range(len(left)) for j in range(len(right))]
         offsets = [left + i - 1 - j for j in range(len(left))
                    for i in range(len(right))]
         super().__init__(dom, cod, boxes, offsets)
 
-class Discard(LensDiagram):
+class Discard(Diagram):
     def __init__(self, dom):
-        if not isinstance(dom, LensTy):
-            dom = LensPRO(dom)
-        result = Id(LensPRO(0)).tensor(*(len(dom) * [DISCARD]))
+        if not isinstance(dom, Ty):
+            dom = PRO(dom)
+        result = Id(PRO(0)).tensor(*(len(dom) * [DISCARD]))
         super().__init__(result.dom, result.cod, result.boxes, result.offsets,
                          layers=result.layers)
 
 def _copy(ob):
-    assert isinstance(ob, LensOb)
-    return LensBox('copy', LensTy(ob), LensTy(ob, ob),
-                   lambda *vals: vals + vals, lambda x, y, feedback: feedback)
+    assert isinstance(ob, Ob)
+    return CartesianBox('copy', Ty(ob), Ty(ob, ob), lambda *vals: vals + vals,
+                        lambda x, y, feedback: feedback)
 
 def _swap(obx, oby):
-    assert isinstance(obx, LensOb) and isinstance(oby, LensOb)
-    return LensBox('swap', LensTy(obx, oby), LensTy(oby, obx),
-                   lambda x, y: (y, x), lambda x, y, fby, fbx: (fbx, fby))
+    assert isinstance(obx, Ob) and isinstance(oby, Ob)
+    return CartesianBox('swap', Ty(obx, oby), Ty(oby, obx), lambda x, y: (y, x),
+                        lambda x, y, fby, fbx: (fbx, fby))
 
-COPY = LensBox('copy', LensPRO(1), LensPRO(2), lambda *vals: vals + vals,
-               lambda x, y, feedback: feedback)
-SWAP = LensBox('swap', LensPRO(2), LensPRO(2), lambda x, y: (y, x),
-               lambda x, y, fby, fbx: (fbx, fby))
+COPY = CartesianBox('copy', PRO(1), PRO(2), lambda *vals: vals + vals,
+                    lambda x, y, feedback: feedback)
+SWAP = CartesianBox('swap', PRO(2), PRO(2), lambda x, y: (y, x),
+                    lambda x, y, fby, fbx: (fbx, fby))
 
-DISCARD = LensBox('discard', PRO(1) & PRO(0), LensPRO(0), lambda *x: (),
-                  lambda p, *x: ((), p))
+DISCARD = CartesianBox('discard', monoidal.PRO(1) & monoidal.PRO(0), PRO(0),
+                       lambda *x: (), lambda p, *x: ((), p))
 
-class LensSemantics(ABC, monoidal.Box):
-    def __init__(self, name, dom, cod, **params):
-        if 'data' not in params:
-            params['data'] = {}
-        monoidal.Box.__init__(self, name, dom, cod, **params)
-
-    def __call__(self, *args, **kwargs):
-        return self.sample(*args, **kwargs)
-
-    @abstractmethod
-    def sample(self, *args, **kwargs):
-        pass
-
-    @abstractmethod
-    def update(self, *args, **kwargs):
-        pass
-
-    @staticmethod
-    def id(dom):
-        return LensId(dom)
-
-    def then(self, *others):
-        """
-        Implements the sequential composition of lenses.
-        """
-        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
-            return monoidal.Diagram.then(self, *others)
-        other = others[0]
-        if not isinstance(other, LensSemantics):
-            raise TypeError(messages.type_err(LensSemantics, other))
-        if len(self.cod.upper) != len(other.dom.upper) or\
-           len(self.cod.lower) != len(other.dom.lower):
-            raise cat.AxiomError(messages.does_not_compose(self, other))
-
-        lenses = [lens for lens in (self,) + others
-                  if not isinstance(lens, LensId)]
-        if not lenses:
-            return LensId(self.dom)
-        if len(lenses) == 1:
-            return lenses[0]
-        return LensComposite(lenses)
-
-    def tensor(self, *others):
-        """
-        Implements the tensor product of lenses.
-        """
-        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
-            return monoidal.Diagram.tensor(self, *others)
-        other = others[0]
-        if not isinstance(other, LensSemantics):
-            raise TypeError(messages.type_err(LensSemantics, other))
-
-        lenses = [lens for lens in (self,) + others
-                  if len(lens.dom) or len(lens.cod)]
-        if not lenses:
-            return LensId(LensTy())
-        if len(lenses) == 1:
-            return lenses[0]
-        return LensProduct(lenses)
-
-    def fold(self, f):
-        return f(self)
-
-class LensFunction(LensSemantics):
-    def __init__(self, name, dom, cod, sample, update, **params):
-        assert isinstance(dom, LensTy)
-        assert isinstance(cod, LensTy)
-
-        self._sample = sample
-        self._update = update
-
-        LensSemantics.__init__(self, name, dom, cod, **params)
-
-    def sample(self, *args, **kwargs):
-        if 'data' in self.data:
-            kwargs['data'] = self.data['data']
-
-        return self._sample(*args, **kwargs)
-
-    def update(self, *args, **kwargs):
-        if 'data' in self.data:
-            kwargs['data'] = self.data['data']
-
-        return self._update(*args, **kwargs)
-
-@dataclass
-class LensProduct(LensSemantics):
-    lenses: Sequence[LensSemantics]
-
-    def __post_init__(self):
-        dom = reduce(lambda x, y: x @ y, [lens.dom for lens in self.lenses])
-        cod = reduce(lambda x, y: x @ y, [lens.cod for lens in self.lenses])
-        name = reduce(lambda x, y: '%s @ %s' % (str(x), str(y)), self.lenses)
-        LensSemantics.__init__(self, name, dom, cod)
-
-    def sample(self, *args, **kwargs):
-        if kwargs:
-            args = args + (kwargs,)
-
-        k = 0
-        rets = []
-        for lens in self.lenses:
-            vals = cartesian.tuplify(lens.sample(*args[k:k+len(lens.dom)]))
-            rets.append(vals)
-            k += len(lens.dom)
-        return cartesian.untuplify(*sum(rets, ()))
-
-    def update(self, *args, **kwargs):
-        if kwargs:
-            args = args + (kwargs,)
-
-        fwds = args[:len(self.dom.upper)]
-        backs = args[len(self.dom.upper):]
-
-        f = 0
-        b = 0
-        results = ()
-        for lens in self.lenses:
-            upper = len(lens.dom.upper)
-            lower = len(lens.cod.lower)
-            result = lens.update(*fwds[f:f+upper], *backs[b:b+lower])
-            results = results + cartesian.tuplify(result)
-
-            f += upper
-            b += lower
-
-        return cartesian.untuplify(*results)
-
-    def tensor(self, *others):
-        """
-        Implements the tensor product of lenses.
-        """
-        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
-            return monoidal.Diagram.tensor(self, *others)
-        other = others[0]
-        if not isinstance(other, LensSemantics):
-            raise TypeError(messages.type_err(LensSemantics, other))
-
-        return LensProduct(self.lenses + [other])
-
-    def fold(self, f):
-        return f(LensProduct([l.fold(f) for l in self.lenses]))
-
-@dataclass
-class LensComposite(LensSemantics):
-    lenses: Sequence[LensSemantics]
-
-    def __post_init__(self):
-        name = reduce(lambda x, y: '%s >> %s' % (str(x), str(y)), self.lenses)
-        LensSemantics.__init__(self, name, self.lenses[0].dom,
-                               self.lenses[-1].cod)
-
-    def sample(self, *args, **kwargs):
-        if kwargs:
-            args = args + (kwargs,)
-        vals = args
-
-        for lens in self.lenses:
-            vals = cartesian.tuplify(lens.sample(*vals))
-        return cartesian.untuplify(*vals)
-
-    def update(self, *args):
-        wires = [[None, None] for _ in range(len(self.lenses) + 1)]
-        wires[0][0] = args[0:len(self.lenses[0].dom.upper)]
-        wires[-1][1] = args[len(self.lenses[0].dom.upper):]
-
-        for k, lens in enumerate(self.lenses):
-            wires[k+1][0] = cartesian.tuplify(lens.sample(*wires[k][0]))
-        for k, lens in enumerate(reversed(self.lenses)):
-            j = -(k + 1)
-            wires[j-1][1] = lens.update(*wires[j-1][0], *wires[j][1])
-        return cartesian.untuplify(*wires[0][1])
-
-    def then(self, *others):
-        """
-        Implements the sequential composition of lenses.
-        """
-        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
-            return monoidal.Diagram.then(self, *others)
-        other = others[0]
-        if not isinstance(other, LensSemantics):
-            raise TypeError(messages.type_err(LensSemantics, other))
-        if len(self.cod.upper) != len(other.dom.upper) or\
-           len(self.cod.lower) != len(other.dom.lower):
-            raise cat.AxiomError(messages.does_not_compose(self, other))
-
-        return LensComposite(self.lenses + [other])
-
-    def fold(self, f):
-        return f(LensComposite([l.fold(f) for l in self.lenses]))
-
-class LensId(LensSemantics):
-    def __init__(self, dom):
-        assert isinstance(dom, LensTy)
-        LensSemantics.__init__(self, 'Id(%d)' % len(dom.upper), dom, dom)
-
-    def sample(self, *args, **kwargs):
-        if kwargs:
-            args = args + (kwargs,)
-        return cartesian.untuplify(*args)
-
-    def update(self, *args, **kwargs):
-        return args[len(self.dom.upper):]
-
-    def then(self, *others):
-        """
-        Implements the sequential composition of lenses.
-        """
-        if len(others) != 1 or any(isinstance(other, Sum) for other in others):
-            return monoidal.Diagram.then(self, *others)
-        other = others[0]
-        if not isinstance(other, LensSemantics):
-            raise TypeError(messages.type_err(LensSemantics, other))
-        if len(self.cod.upper) != len(other.dom.upper) or\
-           len(self.cod.lower) != len(other.dom.lower):
-            raise cat.AxiomError(messages.does_not_compose(self, other))
-
-        return other
-
+# TODO: rewrite this for the new get-put framework, once I've invented one
 def hook(lens, pre_sample=None, pre_update=None, post_sample=None,
          post_update=None):
     sample = lens.sample
@@ -501,12 +292,74 @@ def _posthook_method(method, h):
     m.__self__ = method.__self__
     return m
 
-class BoxSemanticsFunctor(LensSemanticsFunctor):
-    def __init__(self):
-        super().__init__(lambda lob: lob, self.box_semantics)
+class WiringBox(wiring.Box):
+    def __init__(self, name, dom, cod, **params):
+        if not isinstance(dom, Ty):
+            raise TypeError(messages.type_err(Ty, dom))
+        if not isinstance(cod, Ty):
+            raise TypeError(messages.type_err(Ty, cod))
+        super().__init__(name, dom, cod, **params)
 
-    def box_semantics(self, box):
-        return LensFunction(box.name, box.dom, box.cod, box.sample, box.update,
-                            data=box.data)
+    @abstractmethod
+    def get(self) -> monoidal.Box:
+        pass
 
-SEMANTIC_FUNCTOR = BoxSemanticsFunctor()
+    @abstractmethod
+    def put(self) -> monoidal.Box:
+        pass
+
+class CartesianWiringBox(WiringBox):
+    def __init__(self, name, dom, cod, getf, putf, **params):
+        self._getf = getf
+        self._putf = putf
+        super().__init__(name, dom, cod, **params)
+
+    def get(self):
+        dom = monoidal.PRO(len(self.dom.upper))
+        cod = monoidal.PRO(len(self.cod.upper))
+        return cartesian.Box(self.name + '_get', dom, cod, function=self._getf,
+                             data=self.data)
+
+    def put(self):
+        dom = monoidal.PRO(len(self.dom.upper @ self.cod.lower))
+        cod = monoidal.PRO(len(self.dom.lower))
+        return cartesian.Box(self.name + '_put', dom, cod, function=self._putf,
+                             data=self.data)
+
+def __put_falg__(f):
+    if isinstance(f, wiring.Id):
+        discard = cartesian.Discard(monoidal.PRO(len(f.dom.upper)))
+        ident = cartesian.Id(monoidal.PRO(len(f.cod.lower)))
+        return cartesian.Id(monoidal.PRO(len(f.dom.upper))), discard @ ident
+    if isinstance(f, wiring.Box):
+        assert isinstance(f, CartesianWiringBox)
+        return f.get(), f.put()
+    if isinstance(f, wiring.Sequential):
+        def put_compose(f, g):
+            f_upper = len(f[0].dom)
+            g_lower = len(g[1].dom) - len(g[0].dom)
+            put = cartesian.Copy(f_upper) @ cartesian.Id(g_lower)
+            put = put >> (cartesian.Id(f_upper) @ f[0] @ cartesian.Id(g_lower))
+            put = put >> (cartesian.Id(f_upper) @ g[1])
+            put = put >> f[1]
+            return (f[0] >> g[0]), put
+        return reduce(put_compose, f.arrows)
+    if isinstance(f, wiring.Parallel):
+        def put_tensor(f, g):
+            f_upper = len(f[0].dom)
+            f_lower = len(f[1].dom) - f_upper
+
+            g_upper = len(g[0].dom)
+            g_lower = len(g[1].dom) - g_upper
+
+            put = cartesian.Id(f_upper) @ cartesian.Swap(g_upper, f_lower) @\
+                  cartesian.Id(g_lower)
+            return put >> (f[1] @ g[1])
+        return reduce(put_tensor, f.factors)
+    raise TypeError(messages.type_err(wiring.Wiring, f))
+
+def getter(diagram):
+    return Diagram.CARTESIAN_GET(diagram)
+
+def putter(diagram):
+    return diagram.collapse(__put_falg__)[1]
