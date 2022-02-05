@@ -356,7 +356,7 @@ def __put_falg__(f):
                   cartesian.Id(g_lower)
             return put >> (f[1] @ g[1])
         return reduce(put_tensor, f.factors)
-    raise TypeError(messages.type_err(wiring.Wiring, f))
+    raise TypeError(messages.type_err(wiring.Diagram, f))
 
 def getter(diagram):
     return Diagram.CARTESIAN_GET(diagram)
