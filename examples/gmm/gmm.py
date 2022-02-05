@@ -78,13 +78,11 @@ class SampleCluster(nn.Module):
 
         self._num_clusters = num_clusters
         self._num_samples = num_samples
-        self.register_buffer('pi', torch.ones(self._num_samples,
-                                              self._num_clusters))
+        self.register_buffer('pi', torch.ones(self._num_clusters))
 
-    def forward(self, p, mus, sigmas):
-        pi = self.pi.expand(mus.shape[0], *self.pi.shape)
-        z = p.variable(Categorical, pi, name='z')
-        return particle_index(mus, z), particle_index(sigmas, z)
+    def forward(self, p, batch_shape=(1,)):
+        pi = batch_expand(self.pi, (*batch_shape, self._num_samples))
+        return p.variable(Categorical, pi, name='z')
 
 class AssignmentGibbs(nn.Module):
     def forward(self, q, mus, sigmas, xs):
