@@ -312,6 +312,8 @@ class CartesianWiringBox(WiringBox):
     def __init__(self, name, dom, cod, getf, putf, **params):
         self._getf = getf
         self._putf = putf
+        assert isinstance(dom, Ty)
+        assert isinstance(cod, Ty)
         super().__init__(name, dom, cod, **params)
 
     def get(self):
