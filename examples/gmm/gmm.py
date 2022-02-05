@@ -95,9 +95,10 @@ class AssignmentGibbs(nn.Module):
         return (z, xs)
 
 class SamplePoint(nn.Module):
-    def forward(self, p, mu, sigma, data=None):
+    def forward(self, p, mus, sigmas, z, data=None):
+        mu, sigma = particle_index(mus, z), particle_index(sigmas, z)
         x = p.normal(mu, sigma, name='x', value=data)
-        return x
+        return ()
 
 class ObservationGibbs(nn.Module):
     def forward(self, q, mu, sigma, data=None):
