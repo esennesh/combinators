@@ -136,12 +136,12 @@ def compile(diagram):
     return ImportanceBox.IMPORTANCE_SEMANTICS(diagram)
 
 def filter(diagram, *args, **kwargs):
-    if not isinstance(diagram, wiring.Wiring):
+    if not isinstance(diagram, wiring.Diagram):
         diagram = compile(diagram)
     return lens.getter(diagram)(*args, **kwargs)
 
 def smooth(diagram, *args, **kwargs):
-    if not isinstance(diagram, wiring.Wiring):
+    if not isinstance(diagram, wiring.Diagram):
         diagram = compile(diagram)
     return lens.putter(diagram)(*args, **kwargs)
 
@@ -155,8 +155,8 @@ def __trace_falgebra__(f):
         return reduce(utils.join_tracing_states, f.arrows)
     if isinstance(f, wiring.Parallel):
         return reduce(utils.join_tracing_states, f.factors)
-    raise TypeError(messages.type_err(wiring.Wiring, f))
+    raise TypeError(messages.type_err(wiring.Diagram, f))
 
 def trace(diagram):
-    assert isinstance(diagram, wiring.Wiring)
+    assert isinstance(diagram, wiring.Diagram)
     return diagram.collapse(__trace_falgebra__)
