@@ -354,7 +354,7 @@ def __put_falg__(f):
 
             put = cartesian.Id(f_upper) @ cartesian.Swap(g_upper, f_lower) @\
                   cartesian.Id(g_lower)
-            return put >> (f[1] @ g[1])
+            return (f[0] @ g[0]), put >> (f[1] @ g[1])
         return reduce(put_tensor, f.factors)
     raise TypeError(messages.type_err(wiring.Diagram, f))
 
