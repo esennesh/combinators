@@ -85,14 +85,11 @@ class SampleCluster(nn.Module):
         return p.variable(Categorical, pi, name='z')
 
 class AssignmentGibbs(nn.Module):
-    def forward(self, q, mus, sigmas, xs):
-        def log_likelihood(k):
-            return Normal(mus[:, k], sigmas[:, k]).log_prob(xs).sum(dim=-1)
-        log_conditionals = torch.stack([log_likelihood(k) for k
-                                        in range(mus.shape[1])], dim=-1)
-
+    def forward(self, q, log_conditionals):
         z = q.variable(Categorical, logits=log_conditionals, name='z')
-        return (z, xs)
+
+    def feedback(self, p, log_conditionals):
+        return ()
 
 class SamplePoint(nn.Module):
     def forward(self, p, mus, sigmas, z, data=None):
