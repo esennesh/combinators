@@ -54,10 +54,7 @@ class ClustersGibbs(nn.Module):
         self.register_buffer('concentration', concentration)
         self.register_buffer('rate', rate)
 
-    def forward(self, q, zs, xs):
-        zsk = nn.functional.one_hot(zs, self._num_clusters).unsqueeze(-1)
-        xsk = xs.unsqueeze(2).expand(xs.shape[0], xs.shape[1],
-                                     self._num_clusters, xs.shape[2]) * zsk
+    def forward(self, q, zsk, xsk):
         nks = zsk.sum(dim=1)
         eff_samples = nks + 1
         hyper_means = (self.mu.unsqueeze(0) + xsk.sum(dim=1)) / eff_samples
@@ -70,6 +67,7 @@ class ClustersGibbs(nn.Module):
         precisions = q.gamma(concentration, rate, name='tau') * eff_samples
         q.normal(hyper_means, torch.pow(precisions, -1/2.), name='mu')
 
+    def feedback(self, p, zsk, xsk):
         return ()
 
 class SampleCluster(nn.Module):
