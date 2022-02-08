@@ -4,7 +4,7 @@ from functools import reduce
 import inspect
 import probtorch
 import torch
-from discopy import messages, monoidal, wiring
+from discopy import cartesian, messages, monoidal, wiring
 
 from . import lens, utils
 
@@ -59,7 +59,7 @@ class WeightedSampler(torch.nn.Module):
         log_weight = null + p.log_proper_weight(sample_dims=dims)
         assert log_weight.shape == self.batch_shape
 
-        return result, p, log_weight
+        return cartesian.tuplify(result), p, log_weight
 
 class ImportanceSemanticsFunctor(lens.CartesianSemanticsFunctor):
     @classmethod
