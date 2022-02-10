@@ -4,9 +4,9 @@ from functools import reduce
 import inspect
 import probtorch
 import torch
-from discopy import messages, monoidal, wiring
+from discopy import cartesian, messages, monoidal, wiring
 
-from . import lens, utils
+from . import lens, signal, utils
 
 class WeightedSampler(torch.nn.Module):
     def __init__(self, target, batch_shape=(1,)):
@@ -59,7 +59,7 @@ class WeightedSampler(torch.nn.Module):
         log_weight = null + p.log_proper_weight(sample_dims=dims)
         assert log_weight.shape == self.batch_shape
 
-        return result, p, log_weight
+        return cartesian.tuplify(result), p, log_weight
 
 class ImportanceSemanticsFunctor(lens.CartesianSemanticsFunctor):
     @classmethod
@@ -108,21 +108,68 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
         result, _, _ = self._cache(None, *args, **kwargs)
         return result
 
-    # TODO: incorporate replay and the MH incremental weight
+    def replay(self, *args, **kwargs):
+        cached = ((None, *args), kwargs) in self._cache
+        if not cached:
+            _, (_, q, log_org) = self.peek()
+
+            result, p, log_weight = self._target.forward(q, *args, **kwargs)
+            self._cache[((None, *args), kwargs)] = (result, p,
+                                                    log_weight + log_org)
+        return cached
+
+    def feedback(self, *args, **kwargs):
+        cached, _ = self.peek()
+        args = tuple(stored if actual is None else actual for (stored, actual)
+                     in zip(cached[0][1:], args))
+        kwargs = {**kwargs, **cached[1]}
+        kwargs = {k: cached[1][k] if kwargs[k] is None else kwargs[k]
+                  for k in kwargs}
+
+        fwd = args[:len(self.dom.upper)]
+        self.replay(*fwd, **kwargs)
+        _, p, _ = self._cache(None, *fwd, **kwargs)
+        return self._proposal.feedback(p, *args, **kwargs)
+
     def smooth(self, *args, **kwargs):
         if self._target.pass_data:
             _, data = self._target.expand_args((), **self.data)
             kwargs = {**data, **kwargs}
-        q = probtorch.Trace()
-        feedback = self._proposal.forward(q, *args, **kwargs)
-
+        dims = tuple(range(len(self._target.batch_shape)))
         fwd = args[:len(self.dom.upper)]
+        bkwd = args[len(self.dom.upper):]
+        signals = reduce(lambda f, g: f @ g, bkwd, signal.Signal.id(0))
         cached_fwd = (None, *fwd)
-        if (cached_fwd, kwargs) in self._cache:
-            state = self._target.forward(q, *fwd, **kwargs)
-            self._cache[(cached_fwd, {})] = state
 
-        return feedback
+        # Retrieve the stored target trace from the cache, initializing by
+        # filtering if necessary.
+        stored_result, p, log_v = self._cache(*cached_fwd, **kwargs)
+        log_orig = p.log_joint(sample_dims=dims)
+
+        # Retrieve the feedback corresponding to the stored target trace
+        feedback = cartesian.tuplify(signals(*stored_result))
+
+        # Rescore the original trace under the proposal kernel
+        q = probtorch.NestedTrace(q=p)
+        self._proposal.forward(q, *fwd, *feedback, **kwargs)
+        log_rk = q.log_joint(sample_dims=dims)
+
+        # Draw the new trace and the feedback from the proposal kernel
+        q = probtorch.Trace()
+        self._proposal.forward(q, *fwd, *feedback, **kwargs)
+        log_fk = q.log_joint(sample_dims=dims)
+
+        # Score the new trace under the target program
+        result, p, _ = self._target.forward(q, *fwd, **kwargs)
+        log_update = p.log_joint(sample_dims=dims)
+
+        log_v = log_v + (log_update + log_rk) - (log_orig + log_fk)
+        self._cache[(cached_fwd, kwargs)] = (result, p, log_v)
+
+        # Retrieve the feedback corresponding to the new target trace
+        feedback = cartesian.tuplify(signals(*result))
+        return signal.Signal(len(self.dom.upper), len(self.dom.lower),
+                             self.feedback).split()
 
 def importance_box(name, target, batch_shape, proposal, dom, cod, data={}):
     assert not isinstance(dom, lens.Ty) and not isinstance(cod, lens.Ty)

@@ -312,25 +312,28 @@ class CartesianWiringBox(WiringBox):
     def __init__(self, name, dom, cod, getf, putf, **params):
         self._getf = getf
         self._putf = putf
+        assert isinstance(dom, Ty)
+        assert isinstance(cod, Ty)
         super().__init__(name, dom, cod, **params)
 
     def get(self):
-        dom = monoidal.PRO(len(self.dom.upper))
-        cod = monoidal.PRO(len(self.cod.upper))
+        dom = len(self.dom.upper)
+        cod = len(self.cod.upper)
         return cartesian.Box(self.name + '_get', dom, cod, function=self._getf,
                              data=self.data)
 
     def put(self):
-        dom = monoidal.PRO(len(self.dom.upper @ self.cod.lower))
-        cod = monoidal.PRO(len(self.dom.lower))
+        dom = len(self.dom.upper @ self.cod.lower)
+        cod = len(self.dom.lower)
         return cartesian.Box(self.name + '_put', dom, cod, function=self._putf,
                              data=self.data)
 
 def __put_falg__(f):
     if isinstance(f, wiring.Id):
-        discard = cartesian.Discard(monoidal.PRO(len(f.dom.upper)))
-        ident = cartesian.Id(monoidal.PRO(len(f.cod.lower)))
-        return cartesian.Id(monoidal.PRO(len(f.dom.upper))), discard @ ident
+        dom = Ty(*f.dom.objects)
+        discard = cartesian.Discard(len(dom.upper))
+        ident = cartesian.Id(len(dom.lower))
+        return cartesian.Id(len(dom.upper)), discard @ ident
     if isinstance(f, wiring.Box):
         assert isinstance(f, CartesianWiringBox)
         return f.get(), f.put()

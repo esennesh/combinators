@@ -54,10 +54,7 @@ class ClustersGibbs(nn.Module):
         self.register_buffer('concentration', concentration)
         self.register_buffer('rate', rate)
 
-    def forward(self, q, zs, xs):
-        zsk = nn.functional.one_hot(zs, self._num_clusters).unsqueeze(-1)
-        xsk = xs.unsqueeze(2).expand(xs.shape[0], xs.shape[1],
-                                     self._num_clusters, xs.shape[2]) * zsk
+    def forward(self, q, zsk, xsk):
         nks = zsk.sum(dim=1)
         eff_samples = nks + 1
         hyper_means = (self.mu.unsqueeze(0) + xsk.sum(dim=1)) / eff_samples
@@ -70,6 +67,7 @@ class ClustersGibbs(nn.Module):
         precisions = q.gamma(concentration, rate, name='tau') * eff_samples
         q.normal(hyper_means, torch.pow(precisions, -1/2.), name='mu')
 
+    def feedback(self, p, zsk, xsk):
         return ()
 
 class SampleCluster(nn.Module):
@@ -78,29 +76,38 @@ class SampleCluster(nn.Module):
 
         self._num_clusters = num_clusters
         self._num_samples = num_samples
-        self.register_buffer('pi', torch.ones(self._num_samples,
-                                              self._num_clusters))
+        self.register_buffer('pi', torch.ones(self._num_clusters))
 
-    def forward(self, p, mus, sigmas):
-        pi = self.pi.expand(mus.shape[0], *self.pi.shape)
-        z = p.variable(Categorical, pi, name='z')
-        return particle_index(mus, z), particle_index(sigmas, z)
+    def forward(self, p, batch_shape=(1,)):
+        pi = batch_expand(self.pi, (*batch_shape, self._num_samples))
+        return p.variable(Categorical, pi, name='z')
 
 class AssignmentGibbs(nn.Module):
-    def forward(self, q, mus, sigmas, xs):
+    def forward(self, q, log_conditionals):
+        z = q.variable(Categorical, logits=log_conditionals, name='z')
+
+    def feedback(self, p, log_conditionals):
+        return ()
+
+class SamplePoint(nn.Module):
+    def forward(self, p, mus, sigmas, z, data=None):
+        mu, sigma = particle_index(mus, z), particle_index(sigmas, z)
+        x = p.normal(mu, sigma, name='x', value=data)
+        return ()
+
+class ObservationGibbs(nn.Module):
+    def forward(self, q, mus, sigmas, zs, data=None):
+        pass
+
+    def feedback(self, p, mus, sigmas, zs, data=None):
+        xs = data
         def log_likelihood(k):
             return Normal(mus[:, k], sigmas[:, k]).log_prob(xs).sum(dim=-1)
         log_conditionals = torch.stack([log_likelihood(k) for k
                                         in range(mus.shape[1])], dim=-1)
 
-        z = q.variable(Categorical, logits=log_conditionals, name='z')
-        return (z, xs)
-
-class SamplePoint(nn.Module):
-    def forward(self, p, mu, sigma, data=None):
-        x = p.normal(mu, sigma, name='x', value=data)
-        return x
-
-class ObservationGibbs(nn.Module):
-    def forward(self, q, mu, sigma, data=None):
-        return data
+        num_clusters = mus.shape[1]
+        zsk = nn.functional.one_hot(zs, num_clusters).unsqueeze(-1)
+        xsk = xs.unsqueeze(2).expand(xs.shape[0], xs.shape[1], num_clusters,
+                                     xs.shape[2]) * zsk
+        return (zsk, xsk, log_conditionals)
