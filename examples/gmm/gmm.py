@@ -58,19 +58,17 @@ class ClustersGibbs(nn.Module):
         zsk = nn.functional.one_hot(zs, self._num_clusters).unsqueeze(-1)
         xsk = xs.unsqueeze(2).expand(xs.shape[0], xs.shape[1],
                                      self._num_clusters, xs.shape[2]) * zsk
-        nks = torch.stack([(zs == k).sum(dim=-1) + 1 for k in
-                           range(self._num_clusters)], dim=-1).unsqueeze(-1)
-        sample_means = xsk.sum(dim=1) / nks
-        sample_sqdevs = (xsk - zsk * sample_means.unsqueeze(1)) ** 2
+        nks = zsk.sum(dim=1)
+        eff_samples = nks + 1
+        hyper_means = (self.mu.unsqueeze(0) + xsk.sum(dim=1)) / eff_samples
+        concentration = self.concentration.unsqueeze(0) + nks / 2
+        rate = self.rate.unsqueeze(0)
+        rate = rate + 1/2 * (self.mu.unsqueeze(0) ** 2 -
+                             eff_samples * hyper_means ** 2 +
+                             (xsk ** 2).sum(dim=1))
 
-        concentration = self.concentration + nks / 2
-        rate = self.rate + sample_sqdevs.sum(dim=1) / 2 +\
-               nks * sample_means ** 2 / (2 * (nks + 1))
-        taus = q.gamma(concentration, rate, name='tau')
-
-        mean_tau = taus * (nks + 1)
-        mean_mu = nks * sample_means / (1 + nks)
-        q.normal(mean_mu, (1. / mean_tau).sqrt(), name='mu')
+        precisions = q.gamma(concentration, rate, name='tau') * eff_samples
+        q.normal(hyper_means, torch.pow(precisions, -1/2.), name='mu')
 
         return ()
 
