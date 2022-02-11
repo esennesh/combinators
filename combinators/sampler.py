@@ -111,11 +111,9 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
     def replay(self, *args, **kwargs):
         cached = ((None, *args), kwargs) in self._cache
         if not cached:
-            _, (_, q, log_org) = self.peek()
-
+            _, (_, q, _) = self.peek()
             result, p, log_weight = self._target.forward(q, *args, **kwargs)
-            self._cache[((None, *args), kwargs)] = (result, p,
-                                                    log_weight + log_org)
+            self._cache[((None, *args), kwargs)] = (result, p, log_weight)
         return cached
 
     def feedback(self, *args, **kwargs):
