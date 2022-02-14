@@ -204,3 +204,18 @@ def trace(diagram):
             _, (_, p, log_weight) = f.peek()
             merge(p, log_weight)
     return merge.p, merge.log_weight
+
+def __params_falgebra__(f):
+    if isinstance(f, ImportanceWiringBox):
+        return set(f.target.parameters()), set(f.proposal.parameters())
+    if isinstance(f, (wiring.Id, lens.CartesianWiringBox)):
+        return set(), set()
+    if isinstance(f, wiring.Sequential):
+        return reduce(lambda x, y: (x[0] | y[0], x[1] | y[1]), f.arrows)
+    if isinstance(f, wiring.Parallel):
+        return reduce(lambda x, y: (x[0] | y[0], x[1] | y[1]), f.factors)
+    raise TypeError(messages.type_err(wiring.Diagram, f))
+
+def parameters(diagram):
+    assert isinstance(diagram, wiring.Diagram)
+    return diagram.collapse(__params_falgebra__)
