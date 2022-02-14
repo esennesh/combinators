@@ -88,6 +88,41 @@ class InitialBallState(nn.Module):
 
         return direction, position
 
+class InitBallProposal(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.velocity_gibbs = nn.Sequential(
+            nn.Linear(4, 8), nn.PReLU(),
+            nn.Linear(8, 8), nn.PReLU(),
+            nn.Linear(8, 4)
+        )
+
+        self.position_gibbs = nn.Sequential(
+            nn.Linear(4, 8), nn.PReLU(),
+            nn.Linear(8, 8), nn.PReLU(),
+            nn.Linear(8, 4)
+        )
+
+    def forward(self, q, direction, position, data={}):
+        if len(direction.shape) < 3:
+            direction = direction.unsqueeze(1)
+        if len(position.shape) < 3:
+            position = position.unsqueeze(1)
+
+        vel_stats = self.velocity_gibbs(torch.cat(
+            (direction.mean(dim=1), direction.std(dim=1, unbiased=False)), dim=1
+        )).view(-1, 2, 2).unbind(dim=1)
+        q.normal(vel_stats[0], softplus(vel_stats[1]), name='velocity_0')
+
+        pos_stats = self.position_gibbs(torch.cat(
+            (position.mean(dim=1), position.std(dim=1, unbiased=False)), dim=1
+        )).view(-1, 2, 2).unbind(dim=1)
+        q.normal(pos_stats[0], softplus(pos_stats[1]), name='position_0')
+
+    def feedback(self, p, *args, data={}):
+        return ()
+
 def reflect_on_boundary(position, direction, boundary, d=0, positive=True):
     sign = 1.0 if positive else -1.0
     overage = position[:, d] - sign * boundary
