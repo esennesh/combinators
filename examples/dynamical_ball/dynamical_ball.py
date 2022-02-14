@@ -97,26 +97,35 @@ class StepBallDynamics(nn.Module):
 
         return direction, position
 
-class StepBallGuide(combinators.model.Primitive):
-    def __init__(self, num_steps, params={}, trainable=False, batch_shape=(1,),
-                 q=None):
-        params = {
-            'velocities': {
-                'loc': torch.zeros(num_steps, 2),
-                'scale': torch.ones(num_steps, 2),
-            },
-        } if not params else params
-        super(StepBallGuide, self).__init__(params, trainable, batch_shape, q)
-        self._num_steps = num_steps
+class StepBallProposal(nn.Module):
+    def __init__(self):
+        super().__init__()
 
-    @property
-    def name(self):
-        return 'StepBallDynamics'
+        self.direction_gibbs = nn.Sequential(
+            nn.Linear(2 * 6, 16), nn.PReLU(),
+            nn.Linear(16, 16), nn.PReLU(),
+            nn.Linear(16, 4)
+        )
 
-    def _forward(self, theta, t, data={}):
-        velocities = self.args_vardict()['velocities']
+        self.direction_feedback = nn.Sequential(
+            nn.Linear(2 * 4, 16), nn.PReLU(),
+            nn.Linear(16, 16), nn.PReLU(),
+            nn.Linear(16, 2 * 4)
+        )
 
-        self.sample(Normal, loc=velocities['loc'][:, t],
-                    scale=softplus(velocities['scale'][:, t]),
-                    name='velocity_%d' % (t+1))
-        return theta
+    def forward(self, q, prev_dir, prev_pos, uncertainty, noise, next_dir,
+                next_pos, data={}):
+        velocity_stats = self.direction_gibbs(torch.cat(
+            (prev_dir, prev_pos, next_dir, next_pos, uncertainty, noise),
+            dim=1,
+        )).view(-1, 2, 2)
+        velocity_loc = velocity_stats[:, :, 0]
+        velocity_scale = softplus(velocity_stats[:, :, 1])
+        q.normal(loc=velocity_loc, scale=velocity_scale, name='velocity')
+
+    def feedback(self, p, prev_dir, prev_pos, uncertainty, noise, data={}):
+        stats = self.direction_feedback(torch.cat(
+            (p['velocity'].value, p['position'].value, uncertainty, noise),
+            dim=1,
+        )).view(-1, 2, 4)
+        return torch.unbind(stats, dim=-1)
