@@ -68,7 +68,7 @@ def reflect_on_boundary(position, direction, boundary, d=0, positive=True):
     direction = torch.stack(direction, dim=1)
     return position, direction
 
-def simulate_step(position, velocity, p=None):
+def simulate_step(position, velocity):
     proposal = position + velocity
     for i in range(2):
         for pos in [True, False]:
