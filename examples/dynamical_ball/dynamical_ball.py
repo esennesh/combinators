@@ -89,18 +89,15 @@ def simulate_trajectory(position, velocity, num_steps, velocities=None):
         trajectory[:, t, 1] = velocity
     return trajectory
 
-class StepBallDynamics(combinators.model.Primitive):
-    def _forward(self, theta, t, data={}):
-        direction, position, uncertainty, noise = theta
+class StepBallDynamics(nn.Module):
+    def forward(self, p, direction, position, uncertainty, noise, data={}):
+        position, direction = simulate_step(position, direction)
 
-        position, direction = simulate_step(position, direction, self.p)
-        position = self.observe('position_%d' % (t+1),
-                                data.get('position_%d' % (t+1)), Normal,
-                                loc=position, scale=noise)
-        direction = self.sample(Normal, loc=direction, scale=uncertainty,
-                                name='velocity_%d' % (t+1))
+        position = p.normal(loc=position, scale=noise, name='position',
+                            value=data['position'])
+        direction = p.normal(loc=direction, scale=uncertainty, name='velocity')
 
-        return direction, position, uncertainty, noise
+        return direction, position
 
 class StepBallGuide(combinators.model.Primitive):
     def __init__(self, num_steps, params={}, trainable=False, batch_shape=(1,),
