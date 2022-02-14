@@ -41,3 +41,8 @@ def iid(f, n, join=lambda x, y: x + y):
 
 def sequential(f, n):
     return functools.reduce(lambda x, y: x >> y, [f] * n, lens.Id(f.dom))
+
+def parameterized_ssm(params, state, f):
+    assert f.dom == state @ params
+
+    return lens.Id(state) @ lens.Copy(params) >> (f @ lens.Id(params))
