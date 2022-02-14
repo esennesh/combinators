@@ -91,6 +91,14 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
 
         super().__init__(name, dom, cod, self.filter, self.smooth, data=data)
 
+    @property
+    def target(self):
+        return self._target
+
+    @property
+    def proposal(self):
+        return self._proposal
+
     def peek(self):
         return self._cache.peek()
 
@@ -164,11 +172,14 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
                              self.feedback).split()
 
 def importance_box(name, target, batch_shape, proposal, dom, cod, data={}):
-    assert not isinstance(dom, lens.Ty) and not isinstance(cod, lens.Ty)
-    dom = dom & monoidal.PRO(len(dom))
-    cod = cod & monoidal.PRO(len(cod))
-    target = WeightedSampler(target, batch_shape)
+    if not isinstance(dom, lens.Ty):
+        dom = dom & monoidal.PRO(len(dom))
+    assert len(dom.upper) == len(dom.lower)
+    if not isinstance(cod, lens.Ty):
+        cod = cod & monoidal.PRO(len(cod))
+    assert len(cod.upper) == len(cod.lower)
 
+    target = WeightedSampler(target, batch_shape)
     return ImportanceBox(name, dom, cod, target, proposal, data=data)
 
 @lru_cache(maxsize=None)
