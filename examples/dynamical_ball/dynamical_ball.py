@@ -37,7 +37,7 @@ class InitialBallState(nn.Module):
         self.register_buffer('velocity_0__scale', torch.ones(2))
 
         self.register_buffer('position_0__loc', torch.ones(2))
-        self.register_buffer('position_0__covariance_matrix', torch.eye(2))
+        self.register_buffer('position_0__scale', torch.ones(2))
 
     def forward(self, p, batch_shape=(1,)):
         loc = self.velocity_0__loc.expand(*batch_shape, 2)
@@ -47,10 +47,8 @@ class InitialBallState(nn.Module):
         direction = direction / speed.unsqueeze(-1).expand(*direction.shape)
 
         loc = self.position_0__loc.expand(*batch_shape, 2)
-        covar = self.position_0__covariance_matrix.expand(*batch_shape, 2, 2)
-        pos_scale = LowerCholeskyTransform()(covar)
-        position = p.multivariate_normal(loc, scale_tril=pos_scale,
-                                         name='position_0')
+        scale = self.position_0__scale.expand(*batch_shape, 2)
+        position = p.normal(loc, scale, name='position_0')
 
         return direction, position
 
