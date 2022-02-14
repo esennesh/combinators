@@ -29,6 +29,42 @@ class InitBallDynamics(nn.Module):
         noise = softplus(p.normal(loc, scale, name='noise'))
         return uncertainty, noise
 
+class InitDynamicsProposal(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.uncertainty_gibbs = nn.Sequential(
+            nn.Linear(4, 8), nn.PReLU(),
+            nn.Linear(8, 8), nn.PReLU(),
+            nn.Linear(8, 4)
+        )
+
+        self.noise_gibbs = nn.Sequential(
+            nn.Linear(4, 8), nn.PReLU(),
+            nn.Linear(8, 8), nn.PReLU(),
+            nn.Linear(8, 4)
+        )
+
+    def forward(self, q, uncertainties, noises, data={}):
+        if len(uncertainties.shape) < 3:
+            uncertainties = uncertainties.unsqueeze(1)
+        if len(noises.shape) < 3:
+            noises = noises.unsqueeze(1)
+        uncertainty_stats = self.uncertainty_gibbs(torch.cat(
+            (uncertainties.mean(dim=1),
+             uncertainties.std(dim=1, unbiased=False)), dim=1
+        )).view(-1, 2, 2).unbind(dim=-1)
+        q.normal(uncertainty_stats[0], softplus(uncertainty_stats[1]),
+                 name='uncertainty')
+
+        noise_stats = self.noise_gibbs(torch.cat(
+            (noises.mean(dim=1), noises.std(dim=1, unbiased=False)), dim=1
+        )).view(-1, 2, 2).unbind(dim=-1)
+        q.normal(noise_stats[0], softplus(noise_stats[1]), name='noise')
+
+    def feedback(self, p, *args, data={}):
+        return ()
+
 class InitialBallState(nn.Module):
     def __init__(self):
         super().__init__()
