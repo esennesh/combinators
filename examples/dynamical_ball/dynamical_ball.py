@@ -9,40 +9,50 @@ from torch.nn.functional import softplus
 
 import combinators.model
 
-class InitBallDynamics(combinators.model.Primitive):
-    def __init__(self, params={}, trainable=False, batch_shape=(1,), q=None):
-        params = {
-            'velocity_0': {
-                'loc': torch.ones(2) / np.sqrt(2),
-                'scale': torch.ones(2),
-            },
-            'position_0': {
-                'loc': torch.ones(2),
-                'covariance_matrix': torch.eye(2),
-            },
-            'uncertainty': {
-                'loc': torch.ones(2),
-                'scale': torch.ones(2),
-            },
-            'noise': {
-                'loc': torch.ones(2),
-                'scale': torch.ones(2),
-            },
-        } if not params else params
-        super(InitBallDynamics, self).__init__(params, trainable, batch_shape,
-                                               q)
+class InitBallDynamics(nn.Module):
+    def __init__(self):
+        super().__init__()
 
-    def _forward(self, data={}):
-        direction = self.param_sample(Normal, name='velocity_0')
+        self.register_buffer('uncertainty__loc', torch.ones(2))
+        self.register_buffer('uncertainty__scale', torch.ones(2))
+
+        self.register_buffer('noise__loc', torch.ones(2))
+        self.register_buffer('noise__scale', torch.ones(2))
+
+    def forward(self, p, batch_shape=(1,)):
+        loc = self.uncertainty__loc.expand(*batch_shape, 2)
+        scale = self.uncertainty__scale.expand(*batch_shape, 2)
+        uncertainty = softplus(p.normal(loc, scale, name='uncertainty'))
+
+        loc = self.noise__loc.expand(*batch_shape, 2)
+        scale = self.noise__scale.expand(*batch_shape, 2)
+        noise = softplus(p.normal(loc, scale, name='noise'))
+        return uncertainty, noise
+
+class InitialBallState(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.register_buffer('velocity_0__loc', torch.ones(2) / np.sqrt(2))
+        self.register_buffer('velocity_0__scale', torch.ones(2))
+
+        self.register_buffer('position_0__loc', torch.ones(2))
+        self.register_buffer('position_0__covariance_matrix', torch.eye(2))
+
+    def forward(self, p, batch_shape=(1,)):
+        loc = self.velocity_0__loc.expand(*batch_shape, 2)
+        scale = self.velocity_0__scale.expand(*batch_shape, 2)
+        direction = p.normal(loc, scale, name='velocity_0')
         speed = torch.sqrt(torch.sum(direction**2, dim=1))
         direction = direction / speed.unsqueeze(-1).expand(*direction.shape)
-        pos_params = self.args_vardict()['position_0']
-        pos_scale = LowerCholeskyTransform()(pos_params['covariance_matrix'])
-        position = self.sample(MultivariateNormal, loc=pos_params['loc'],
-                               scale_tril=pos_scale, name='position_0')
-        uncertainty = softplus(self.param_sample(Normal, name='uncertainty'))
-        noise = softplus(self.param_sample(Normal, name='noise'))
-        return direction, position, uncertainty, noise
+
+        loc = self.position_0__loc.expand(*batch_shape, 2)
+        covar = self.position_0__covariance_matrix.expand(*batch_shape, 2, 2)
+        pos_scale = LowerCholeskyTransform()(covar)
+        position = p.multivariate_normal(loc, scale_tril=pos_scale,
+                                         name='position_0')
+
+        return direction, position
 
 def reflect_on_boundary(position, direction, boundary, d=0, positive=True):
     sign = 1.0 if positive else -1.0
