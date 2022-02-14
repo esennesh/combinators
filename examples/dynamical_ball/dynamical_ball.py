@@ -158,12 +158,12 @@ def simulate_trajectory(position, velocity, num_steps, velocities=None):
         trajectory[:, t, 1] = velocity
     return trajectory
 
-class StepBallDynamics(nn.Module):
-    def forward(self, p, direction, position, uncertainty, noise, data={}):
+class StepBallState(nn.Module):
+    def forward(self, p, direction, position, uncertainty, noise, data=None):
         position, direction = simulate_step(position, direction)
 
         position = p.normal(loc=position, scale=noise, name='position',
-                            value=data['position'])
+                            value=data)
         direction = p.normal(loc=direction, scale=uncertainty, name='velocity')
 
         return direction, position
