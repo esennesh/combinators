@@ -204,36 +204,45 @@ class Unit(CartesianBox):
         super().__init__('Unit(%d)' % len(cod), PRO(0), cod, unit,
                          lambda *args: ())
 
-class Copy(Diagram):
-    """
-    Implements the copy function from dom to 2*dom.
-    >>> assert Copy(3)(0, 1, 2) == (0, 1, 2, 0, 1, 2)
-    """
-    def __init__(self, dom):
-        if not isinstance(dom, Ty):
-            dom = PRO(dom)
-        tensor_id = Id(PRO(0))
-        result = tensor_id
-        for ob in dom:
-            result = result @ _copy(ob)
-        for i in range(1, len(dom)):
-            swaps = tensor_id.tensor(*[_swap(dom[k], dom[k+i]) for k in
-                                       range(len(dom) - i)])
-            result = result >> Id(dom[:i]) @ swaps @ Id(dom[-i:])
-        super().__init__(dom, dom @ dom, result.boxes, result.offsets,
-                         layers=result.layers)
+class Copy(CartesianBox):
+    def __init__(self, dom, n=2, join=None):
+        self._join = join if join else lambda x, y: (x, y)
+        self._n = n
+        cod = reduce(lambda x, y: x @ y, [dom] * self._n)
+        super().__init__('Copy(%d, %d)' % (len(dom), self._n), dom, cod,
+                         self.copy, self.combine)
 
-class Swap(Diagram):
+    def copy(self, *args):
+        return args * self._n
+
+    def combine(self, *args):
+        bkwds = args[len(self.dom):len(self.dom) * 2]
+        for k in range(1, self._n):
+            bkwdy = args[(k + 1) * len(self.dom):(k + 2) * len(self.dom)]
+            bkwds = tuple(self._join(x, y) for x, y in zip(bkwds, bkwdy))
+        return bkwds
+
+class Swap(CartesianBox):
     def __init__(self, left, right):
         if not isinstance(left, Ty):
             left = PRO(left)
         if not isinstance(right, Ty):
             right = PRO(right)
-        dom, cod = left @ right, right @ left
-        boxes = [SWAP for i in range(len(left)) for j in range(len(right))]
-        offsets = [left + i - 1 - j for j in range(len(left))
-                   for i in range(len(right))]
-        super().__init__(dom, cod, boxes, offsets)
+
+        self._left = left
+        self._right = right
+        super().__init__('Swap(%d, %d)' % (len(left), len(right)), left @ right,
+                         right @ left, self.swapf, self.swapb)
+
+    def swapf(self, *args):
+        left = args[:len(self._left)]
+        right = args[len(self._left):]
+        return (*right, *left)
+
+    def swapb(self, *args):
+        right = args[:len(self._right)]
+        left = args[len(self._right):]
+        return (*left, *right)
 
 class Discard(Diagram):
     def __init__(self, dom):
@@ -243,23 +252,8 @@ class Discard(Diagram):
         super().__init__(result.dom, result.cod, result.boxes, result.offsets,
                          layers=result.layers)
 
-def _copy(ob):
-    assert isinstance(ob, Ob)
-    return CartesianBox('copy', Ty(ob), Ty(ob, ob), lambda *vals: vals + vals,
-                        lambda x, y, feedback: feedback)
-
-def _swap(obx, oby):
-    assert isinstance(obx, Ob) and isinstance(oby, Ob)
-    return CartesianBox('swap', Ty(obx, oby), Ty(oby, obx), lambda x, y: (y, x),
-                        lambda x, y, fby, fbx: (fbx, fby))
-
-COPY = CartesianBox('copy', PRO(1), PRO(2), lambda *vals: vals + vals,
-                    lambda x, y, feedback: feedback)
-SWAP = CartesianBox('swap', PRO(2), PRO(2), lambda x, y: (y, x),
-                    lambda x, y, fby, fbx: (fbx, fby))
-
-DISCARD = CartesianBox('discard', monoidal.PRO(1) & monoidal.PRO(0), PRO(0),
-                       lambda *x: (), lambda p, *x: ((), p))
+DISCARD = CartesianBox('discard', PRO(1), PRO(0), lambda x: (),
+                       lambda x: None)
 
 # TODO: rewrite this for the new get-put framework, once I've invented one
 def hook(lens, pre_sample=None, pre_update=None, post_sample=None,
