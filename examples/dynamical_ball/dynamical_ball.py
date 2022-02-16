@@ -70,11 +70,14 @@ class InitialBallState(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.register_buffer('velocity_0__loc', torch.ones(2) / np.sqrt(2))
-        self.register_buffer('velocity_0__scale', torch.ones(2))
+        self.register_parameter('velocity_0__loc',
+                                nn.Parameter(torch.ones(2) / np.sqrt(2)))
+        self.register_parameter('velocity_0__scale',
+                                nn.Parameter(torch.ones(2)))
 
-        self.register_buffer('position_0__loc', torch.ones(2))
-        self.register_buffer('position_0__scale', torch.ones(2))
+        self.register_parameter('position_0__loc', nn.Parameter(torch.ones(2)))
+        self.register_parameter('position_0__scale',
+                                nn.Parameter(torch.ones(2)))
 
     def forward(self, p, batch_shape=(1,)):
         loc = self.velocity_0__loc.expand(*batch_shape, 2)
