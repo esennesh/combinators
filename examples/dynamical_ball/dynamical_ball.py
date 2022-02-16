@@ -13,11 +13,12 @@ class InitBallDynamics(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.register_buffer('uncertainty__loc', torch.ones(2))
-        self.register_buffer('uncertainty__scale', torch.ones(2))
+        self.register_parameter('uncertainty__loc', nn.Parameter(torch.ones(2)))
+        self.register_parameter('uncertainty__scale',
+                                nn.Parameter(torch.ones(2)))
 
-        self.register_buffer('noise__loc', torch.ones(2))
-        self.register_buffer('noise__scale', torch.ones(2))
+        self.register_parameter('noise__loc', nn.Parameter(torch.ones(2)))
+        self.register_parameter('noise__scale', nn.Parameter(torch.ones(2)))
 
     def forward(self, p, batch_shape=(1,)):
         loc = self.uncertainty__loc.expand(*batch_shape, 2)
