@@ -102,6 +102,9 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
     def peek(self):
         return self._cache.peek()
 
+    def clear(self):
+        return self._cache.clear()
+
     def filter(self, *args, **kwargs):
         if self._target.pass_data:
             _, data = self._target.expand_args((), **self.data)
@@ -204,6 +207,12 @@ def trace(diagram):
             _, (_, p, log_weight) = f.peek()
             merge(p, log_weight)
     return merge.p, merge.log_weight
+
+def clear(diagram):
+    assert isinstance(diagram, wiring.Diagram)
+    for f in diagram:
+        if isinstance(f, ImportanceWiringBox):
+            f.clear()
 
 def __params_falgebra__(f):
     if isinstance(f, ImportanceWiringBox):
