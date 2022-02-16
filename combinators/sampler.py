@@ -81,6 +81,24 @@ class ImportanceBox(lens.Box):
     def proposal(self):
         return self._proposal
 
+class Copy(lens.Copy):
+    def __init__(self, dom, n=2):
+        super().__init__(dom, n=n, join=self.join)
+
+    @staticmethod
+    def join(sx, sy):
+        def sig(*arg):
+            x, y = sx(*arg), sy(*arg)
+            if torch.is_tensor(x) and torch.is_tensor(y):
+                if len(x.shape) == len(y.shape):
+                    return torch.stack((x, y), dim=1)
+                if len(x.shape) < len(y.shape):
+                    return torch.cat((x.unsqueeze(1), y), dim=1)
+                if len(y.shape) < len(x.shape):
+                    return torch.cat((x, y.unsqueeze(1)), dim=1)
+            return (x, y)
+        return signal.Signal(sx.dom, sx.cod, sig)
+
 class ImportanceWiringBox(lens.CartesianWiringBox):
     def __init__(self, name, dom, cod, target, proposal, data={}):
         assert isinstance(target, torch.nn.Module)
