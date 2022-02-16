@@ -2,13 +2,13 @@
 
 import functools
 
-from .. import lens
+from .. import lens, sampler
 
 def iid(f, n):
     if n == 0:
         return lens.Id(f.dom)
 
-    copy = lens.Copy(f.dom)
+    copy = sampler.Copy(f.dom)
     fs = functools.reduce(lambda g, h: g @ h, [f] * n,
                           lens.Id(lens.PRO(0)))
     return copy >> fs
@@ -19,4 +19,4 @@ def sequential(f, n):
 def parameterized_ssm(params, state, f):
     assert f.dom == state @ params
 
-    return lens.Id(state) @ lens.Copy(params) >> (f @ lens.Id(params))
+    return lens.Id(state) @ sampler.Copy(params) >> (f @ lens.Id(params))
