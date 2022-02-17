@@ -191,18 +191,11 @@ def smooth(diagram, *args, **kwargs):
         diagram = compile(diagram)
     return lens.putter(diagram)(*args, **kwargs)
 
-def __trace_falgebra__(f):
-    if isinstance(f, ImportanceWiringBox):
-        _, (_, p, log_weight) = f.peek()
-        return p, log_weight
-    if isinstance(f, (wiring.Id, lens.CartesianWiringBox)):
-        return probtorch.Trace(), 0.
-    if isinstance(f, wiring.Sequential):
-        return reduce(utils.join_tracing_states, f.arrows)
-    if isinstance(f, wiring.Parallel):
-        return reduce(utils.join_tracing_states, f.factors)
-    raise TypeError(messages.type_err(wiring.Diagram, f))
-
 def trace(diagram):
     assert isinstance(diagram, wiring.Diagram)
-    return diagram.collapse(__trace_falgebra__)
+    merge = utils.TracingMerger()
+    for f in diagram:
+        if isinstance(f, ImportanceWiringBox):
+            _, (_, p, log_weight) = f.peek()
+            merge(p, log_weight)
+    return merge.p, merge.log_weight
