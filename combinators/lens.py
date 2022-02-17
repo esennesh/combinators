@@ -111,6 +111,11 @@ class Diagram(monoidal.Diagram):
     CARTESIAN_GET = wiring.Functor(lambda t: monoidal.PRO(len(t)),
                                    lambda f: f.get(), monoidal.PRO,
                                    cartesian.Diagram)
+    FUNCTION_SEMANTICS = cartesian.PythonFunctor(lambda t: monoidal.PRO(len(t)),
+                                                 lambda f: cartesian.Function(
+                                                     len(f.dom), len(f.cod),
+                                                     f.function
+                                                 ))
 
     def __init__(self, dom, cod, boxes, offsets, layers=None):
         assert isinstance(dom, Ty)
@@ -363,8 +368,10 @@ def __put_falg__(f):
 
 @lru_cache(maxsize=None)
 def getter(diagram):
-    return Diagram.CARTESIAN_GET(diagram)
+    get = Diagram.CARTESIAN_GET(diagram)
+    return Diagram.FUNCTION_SEMANTICS(get)
 
 @lru_cache(maxsize=None)
 def putter(diagram):
-    return diagram.collapse(__put_falg__)[1]
+    _, put = diagram.collapse(__put_falg__)
+    return Diagram.FUNCTION_SEMANTICS(put)
