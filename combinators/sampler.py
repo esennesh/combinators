@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from functools import reduce
+from functools import lru_cache, reduce
 import inspect
 import probtorch
 import torch
@@ -177,6 +177,7 @@ def importance_box(name, target, batch_shape, proposal, dom, cod, data={}):
 
     return ImportanceBox(name, dom, cod, target, proposal, data=data)
 
+@lru_cache(maxsize=None)
 def compile(diagram):
     return ImportanceBox.IMPORTANCE_SEMANTICS(diagram)
 
