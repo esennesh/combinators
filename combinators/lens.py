@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from abc import abstractmethod
-from functools import reduce, wraps
+from functools import lru_cache, reduce, wraps
 
 from discopy import cartesian, cat, messages, monoidal, wiring
 
@@ -361,8 +361,10 @@ def __put_falg__(f):
         return reduce(put_tensor, f.factors)
     raise TypeError(messages.type_err(wiring.Diagram, f))
 
+@lru_cache(maxsize=None)
 def getter(diagram):
     return Diagram.CARTESIAN_GET(diagram)
 
+@lru_cache(maxsize=None)
 def putter(diagram):
     return diagram.collapse(__put_falg__)[1]
