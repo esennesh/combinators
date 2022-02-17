@@ -76,11 +76,6 @@ def tensorial_eq(x, y):
         return all(tensorial_eq(x[v].value, y[v].value) for v in x.variables())
     return x == y
 
-def join_tracing_states(statex, statey, unary_concat=True):
-    tx, lwx = statex
-    ty, lwy = statey
-    return (join_traces(tx, ty, unary_concat), lwx + lwy)
-
 def batch_where(condition, yes, no, batch_shape):
     yes, unique = batch_collapse(yes, batch_shape)
     no, _ = batch_collapse(no, batch_shape)
@@ -179,16 +174,29 @@ def split_latent(trace):
     observed = trace_filter(trace, lambda k, v: v.observed)
     return latent, observed
 
-def join_traces(first, second, unary_concat=False):
-    p = probtorch.Trace()
-    for k, v in first.items():
-        p[k] = v
-    for k, v in second.items():
-        if unary_concat:
-            while k in p:
-                k = k + 'i'
-        p[k] = v
-    return p
+class TracingMerger:
+    def __init__(self):
+        self._log_weight = 0.
+        self._p = probtorch.Trace()
+        self._names = collections.defaultdict(int)
+
+    @property
+    def p(self):
+        return self._p
+
+    @property
+    def log_weight(self):
+        return self._log_weight
+
+    def __call__(self, p, log_weight):
+        for k, v in p.items():
+            stem, _, _ = k.partition('_')
+            n = self._names[stem]
+            if n:
+                k = stem + '_' + str(n)
+            self._p[k] = v
+            self._names[stem] += 1
+        self._log_weight = self._log_weight + log_weight
 
 def marginalize_all(log_prob):
     for _ in range(len(log_prob.shape)):
