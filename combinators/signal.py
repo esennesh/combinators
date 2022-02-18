@@ -36,6 +36,10 @@ class Signal(rigid.Box):
             raise TypeError(messages.type_err(Signal, other))
         if len(self.cod) != len(other.dom):
             raise cat.AxiomError(messages.does_not_compose(self, other))
+        if self._function == cartesian.untuplify:
+            return other
+        if other._function == cartesian.untuplify:
+            return self
 
         function = lambda vals: other(*cartesian.tuplify(self(*vals)))
         return Signal(self.dom, other.cod, function)
@@ -46,6 +50,10 @@ class Signal(rigid.Box):
         if not isinstance(other, Signal):
             raise TypeError(messages.type_err(Signal, other))
         dom, cod = self.dom @ other.dom, self.cod @ other.cod
+        if dom == self.dom:
+            return self
+        if dom == other.dom:
+            return other
 
         def product(*vals):
             vals0 = cartesian.tuplify(self(*vals[:len(self.dom)]))
