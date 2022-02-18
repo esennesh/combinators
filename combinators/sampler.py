@@ -48,16 +48,10 @@ class WeightedSampler(torch.nn.Module):
         p = probtorch.NestedTrace(q=q)
         result = self.target(p, *args, **kwargs)
 
-        device = 'cpu'
-        for v in p.values():
-            device = v.log_prob.device
-            if device != 'cpu':
-                break
         dims = tuple(range(len(self.batch_shape)))
-        null = torch.zeros(self.batch_shape, device=device)
-
-        log_weight = null + p.log_proper_weight(sample_dims=dims)
-        assert log_weight.shape == self.batch_shape
+        log_weight = p.log_proper_weight(sample_dims=dims)
+        if torch.is_tensor(log_weight):
+            assert log_weight.shape == self.batch_shape
 
         return cartesian.tuplify(result), p, log_weight
 
@@ -87,6 +81,24 @@ class ImportanceBox(lens.Box):
     def proposal(self):
         return self._proposal
 
+class Copy(lens.Copy):
+    def __init__(self, dom, n=2):
+        super().__init__(dom, n=n, join=self.join)
+
+    @staticmethod
+    def join(sx, sy):
+        def sig(*arg):
+            x, y = sx(*arg), sy(*arg)
+            if torch.is_tensor(x) and torch.is_tensor(y):
+                if len(x.shape) == len(y.shape):
+                    return torch.stack((x, y), dim=1)
+                if len(x.shape) < len(y.shape):
+                    return torch.cat((x.unsqueeze(1), y), dim=1)
+                if len(y.shape) < len(x.shape):
+                    return torch.cat((x, y.unsqueeze(1)), dim=1)
+            return (x, y)
+        return signal.Signal(sx.dom, sx.cod, sig)
+
 class ImportanceWiringBox(lens.CartesianWiringBox):
     def __init__(self, name, dom, cod, target, proposal, data={}):
         assert isinstance(target, torch.nn.Module)
@@ -97,13 +109,23 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
 
         super().__init__(name, dom, cod, self.filter, self.smooth, data=data)
 
+    @property
+    def target(self):
+        return self._target
+
+    @property
+    def proposal(self):
+        return self._proposal
+
     def peek(self):
         return self._cache.peek()
 
+    def clear(self):
+        return self._cache.clear()
+
     def filter(self, *args, **kwargs):
         if self._target.pass_data:
-            _, data = self._target.expand_args((), **self.data)
-            kwargs = {**data, **kwargs}
+            kwargs = {**self.data, **kwargs}
 
         result, _, _ = self._cache(None, *args, **kwargs)
         return result
@@ -120,19 +142,18 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
         cached, _ = self.peek()
         args = tuple(stored if actual is None else actual for (stored, actual)
                      in zip(cached[0][1:], args))
-        kwargs = {**kwargs, **cached[1]}
-        kwargs = {k: cached[1][k] if kwargs[k] is None else kwargs[k]
-                  for k in kwargs}
+        kwargs = {
+            k: cached[1][k] if k not in kwargs or kwargs[k] is None else
+               kwargs[k] for k in kwargs.keys() | cached[1].keys()
+        }
 
-        fwd = args[:len(self.dom.upper)]
-        self.replay(*fwd, **kwargs)
-        _, p, _ = self._cache(None, *fwd, **kwargs)
+        self.replay(*args, **kwargs)
+        _, p, _ = self._cache(None, *args, **kwargs)
         return self._proposal.feedback(p, *args, **kwargs)
 
     def smooth(self, *args, **kwargs):
         if self._target.pass_data:
-            _, data = self._target.expand_args((), **self.data)
-            kwargs = {**data, **kwargs}
+            kwargs = {**self.data, **kwargs}
         dims = tuple(range(len(self._target.batch_shape)))
         fwd = args[:len(self.dom.upper)]
         bkwd = args[len(self.dom.upper):]
@@ -165,16 +186,19 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
         self._cache[(cached_fwd, kwargs)] = (result, p, log_v)
 
         # Retrieve the feedback corresponding to the new target trace
-        feedback = cartesian.tuplify(signals(*result))
+        cartesian.tuplify(signals(*result))
         return signal.Signal(len(self.dom.upper), len(self.dom.lower),
                              self.feedback).split()
 
 def importance_box(name, target, batch_shape, proposal, dom, cod, data={}):
-    assert not isinstance(dom, lens.Ty) and not isinstance(cod, lens.Ty)
-    dom = dom & monoidal.PRO(len(dom))
-    cod = cod & monoidal.PRO(len(cod))
-    target = WeightedSampler(target, batch_shape)
+    if not isinstance(dom, lens.Ty):
+        dom = dom & monoidal.PRO(len(dom))
+    assert len(dom.upper) == len(dom.lower)
+    if not isinstance(cod, lens.Ty):
+        cod = cod & monoidal.PRO(len(cod))
+    assert len(cod.upper) == len(cod.lower)
 
+    target = WeightedSampler(target, batch_shape)
     return ImportanceBox(name, dom, cod, target, proposal, data=data)
 
 @lru_cache(maxsize=None)
@@ -199,3 +223,24 @@ def trace(diagram):
             _, (_, p, log_weight) = f.peek()
             merge(p, log_weight)
     return merge.p, merge.log_weight
+
+def clear(diagram):
+    assert isinstance(diagram, wiring.Diagram)
+    for f in diagram:
+        if isinstance(f, ImportanceWiringBox):
+            f.clear()
+
+def __params_falgebra__(f):
+    if isinstance(f, ImportanceWiringBox):
+        return set(f.target.parameters()), set(f.proposal.parameters())
+    if isinstance(f, (wiring.Id, lens.CartesianWiringBox)):
+        return set(), set()
+    if isinstance(f, wiring.Sequential):
+        return reduce(lambda x, y: (x[0] | y[0], x[1] | y[1]), f.arrows)
+    if isinstance(f, wiring.Parallel):
+        return reduce(lambda x, y: (x[0] | y[0], x[1] | y[1]), f.factors)
+    raise TypeError(messages.type_err(wiring.Diagram, f))
+
+def parameters(diagram):
+    assert isinstance(diagram, wiring.Diagram)
+    return diagram.collapse(__params_falgebra__)

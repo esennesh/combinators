@@ -9,40 +9,123 @@ from torch.nn.functional import softplus
 
 import combinators.model
 
-class InitBallDynamics(combinators.model.Primitive):
-    def __init__(self, params={}, trainable=False, batch_shape=(1,), q=None):
-        params = {
-            'velocity_0': {
-                'loc': torch.ones(2) / np.sqrt(2),
-                'scale': torch.ones(2),
-            },
-            'position_0': {
-                'loc': torch.ones(2),
-                'covariance_matrix': torch.eye(2),
-            },
-            'uncertainty': {
-                'loc': torch.ones(2),
-                'scale': torch.ones(2),
-            },
-            'noise': {
-                'loc': torch.ones(2),
-                'scale': torch.ones(2),
-            },
-        } if not params else params
-        super(InitBallDynamics, self).__init__(params, trainable, batch_shape,
-                                               q)
+class InitBallDynamics(nn.Module):
+    def __init__(self):
+        super().__init__()
 
-    def _forward(self, data={}):
-        direction = self.param_sample(Normal, name='velocity_0')
+        self.register_parameter('uncertainty__loc', nn.Parameter(torch.ones(2)))
+        self.register_parameter('uncertainty__scale',
+                                nn.Parameter(torch.ones(2)))
+
+        self.register_parameter('noise__loc', nn.Parameter(torch.ones(2)))
+        self.register_parameter('noise__scale', nn.Parameter(torch.ones(2)))
+
+    def forward(self, p, batch_shape=(1,)):
+        loc = self.uncertainty__loc.expand(*batch_shape, 2)
+        scale = self.uncertainty__scale.expand(*batch_shape, 2)
+        uncertainty = softplus(p.normal(loc, scale, name='uncertainty'))
+
+        loc = self.noise__loc.expand(*batch_shape, 2)
+        scale = self.noise__scale.expand(*batch_shape, 2)
+        noise = softplus(p.normal(loc, scale, name='noise'))
+        return uncertainty, noise
+
+class InitDynamicsProposal(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.uncertainty_gibbs = nn.Sequential(
+            nn.Linear(4, 8), nn.PReLU(),
+            nn.Linear(8, 8), nn.PReLU(),
+            nn.Linear(8, 4)
+        )
+
+        self.noise_gibbs = nn.Sequential(
+            nn.Linear(4, 8), nn.PReLU(),
+            nn.Linear(8, 8), nn.PReLU(),
+            nn.Linear(8, 4)
+        )
+
+    def forward(self, q, uncertainties, noises, data={}):
+        if len(uncertainties.shape) < 3:
+            uncertainties = uncertainties.unsqueeze(1)
+        if len(noises.shape) < 3:
+            noises = noises.unsqueeze(1)
+        uncertainty_stats = self.uncertainty_gibbs(torch.cat(
+            (uncertainties.mean(dim=1),
+             uncertainties.std(dim=1, unbiased=False)), dim=1
+        )).view(-1, 2, 2).unbind(dim=-1)
+        q.normal(uncertainty_stats[0], softplus(uncertainty_stats[1]),
+                 name='uncertainty')
+
+        noise_stats = self.noise_gibbs(torch.cat(
+            (noises.mean(dim=1), noises.std(dim=1, unbiased=False)), dim=1
+        )).view(-1, 2, 2).unbind(dim=-1)
+        q.normal(noise_stats[0], softplus(noise_stats[1]), name='noise')
+
+    def feedback(self, p, *args, data={}):
+        return ()
+
+class InitialBallState(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.register_parameter('velocity_0__loc',
+                                nn.Parameter(torch.ones(2) / np.sqrt(2)))
+        self.register_parameter('velocity_0__scale',
+                                nn.Parameter(torch.ones(2)))
+
+        self.register_parameter('position_0__loc', nn.Parameter(torch.ones(2)))
+        self.register_parameter('position_0__scale',
+                                nn.Parameter(torch.ones(2)))
+
+    def forward(self, p, batch_shape=(1,)):
+        loc = self.velocity_0__loc.expand(*batch_shape, 2)
+        scale = self.velocity_0__scale.expand(*batch_shape, 2)
+        direction = p.normal(loc, scale, name='velocity_0')
         speed = torch.sqrt(torch.sum(direction**2, dim=1))
         direction = direction / speed.unsqueeze(-1).expand(*direction.shape)
-        pos_params = self.args_vardict()['position_0']
-        pos_scale = LowerCholeskyTransform()(pos_params['covariance_matrix'])
-        position = self.sample(MultivariateNormal, loc=pos_params['loc'],
-                               scale_tril=pos_scale, name='position_0')
-        uncertainty = softplus(self.param_sample(Normal, name='uncertainty'))
-        noise = softplus(self.param_sample(Normal, name='noise'))
-        return direction, position, uncertainty, noise
+
+        loc = self.position_0__loc.expand(*batch_shape, 2)
+        scale = self.position_0__scale.expand(*batch_shape, 2)
+        position = p.normal(loc, scale, name='position_0')
+
+        return direction, position
+
+class InitBallProposal(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self.velocity_gibbs = nn.Sequential(
+            nn.Linear(4, 8), nn.PReLU(),
+            nn.Linear(8, 8), nn.PReLU(),
+            nn.Linear(8, 4)
+        )
+
+        self.position_gibbs = nn.Sequential(
+            nn.Linear(4, 8), nn.PReLU(),
+            nn.Linear(8, 8), nn.PReLU(),
+            nn.Linear(8, 4)
+        )
+
+    def forward(self, q, direction, position, data={}):
+        if len(direction.shape) < 3:
+            direction = direction.unsqueeze(1)
+        if len(position.shape) < 3:
+            position = position.unsqueeze(1)
+
+        vel_stats = self.velocity_gibbs(torch.cat(
+            (direction.mean(dim=1), direction.std(dim=1, unbiased=False)), dim=1
+        )).view(-1, 2, 2).unbind(dim=1)
+        q.normal(vel_stats[0], softplus(vel_stats[1]), name='velocity_0')
+
+        pos_stats = self.position_gibbs(torch.cat(
+            (position.mean(dim=1), position.std(dim=1, unbiased=False)), dim=1
+        )).view(-1, 2, 2).unbind(dim=1)
+        q.normal(pos_stats[0], softplus(pos_stats[1]), name='position_0')
+
+    def feedback(self, p, *args, data={}):
+        return ()
 
 def reflect_on_boundary(position, direction, boundary, d=0, positive=True):
     sign = 1.0 if positive else -1.0
@@ -58,7 +141,7 @@ def reflect_on_boundary(position, direction, boundary, d=0, positive=True):
     direction = torch.stack(direction, dim=1)
     return position, direction
 
-def simulate_step(position, velocity, p=None):
+def simulate_step(position, velocity):
     proposal = position + velocity
     for i in range(2):
         for pos in [True, False]:
@@ -79,39 +162,45 @@ def simulate_trajectory(position, velocity, num_steps, velocities=None):
         trajectory[:, t, 1] = velocity
     return trajectory
 
-class StepBallDynamics(combinators.model.Primitive):
-    def _forward(self, theta, t, data={}):
-        direction, position, uncertainty, noise = theta
+class StepBallState(nn.Module):
+    def forward(self, p, direction, position, uncertainty, noise, data=None):
+        position, direction = simulate_step(position, direction)
 
-        position, direction = simulate_step(position, direction, self.p)
-        position = self.observe('position_%d' % (t+1),
-                                data.get('position_%d' % (t+1)), Normal,
-                                loc=position, scale=noise)
-        direction = self.sample(Normal, loc=direction, scale=uncertainty,
-                                name='velocity_%d' % (t+1))
+        position = p.normal(loc=position, scale=noise, name='position',
+                            value=data)
+        direction = p.normal(loc=direction, scale=uncertainty, name='velocity')
 
-        return direction, position, uncertainty, noise
+        return direction, position
 
-class StepBallGuide(combinators.model.Primitive):
-    def __init__(self, num_steps, params={}, trainable=False, batch_shape=(1,),
-                 q=None):
-        params = {
-            'velocities': {
-                'loc': torch.zeros(num_steps, 2),
-                'scale': torch.ones(num_steps, 2),
-            },
-        } if not params else params
-        super(StepBallGuide, self).__init__(params, trainable, batch_shape, q)
-        self._num_steps = num_steps
+class StepBallProposal(nn.Module):
+    def __init__(self):
+        super().__init__()
 
-    @property
-    def name(self):
-        return 'StepBallDynamics'
+        self.direction_gibbs = nn.Sequential(
+            nn.Linear(2 * 6, 16), nn.PReLU(),
+            nn.Linear(16, 16), nn.PReLU(),
+            nn.Linear(16, 4)
+        )
 
-    def _forward(self, theta, t, data={}):
-        velocities = self.args_vardict()['velocities']
+        self.direction_feedback = nn.Sequential(
+            nn.Linear(2 * 4, 16), nn.PReLU(),
+            nn.Linear(16, 16), nn.PReLU(),
+            nn.Linear(16, 2 * 4)
+        )
 
-        self.sample(Normal, loc=velocities['loc'][:, t],
-                    scale=softplus(velocities['scale'][:, t]),
-                    name='velocity_%d' % (t+1))
-        return theta
+    def forward(self, q, prev_dir, prev_pos, uncertainty, noise, next_dir,
+                next_pos, data={}):
+        velocity_stats = self.direction_gibbs(torch.cat(
+            (prev_dir, prev_pos, next_dir, next_pos, uncertainty, noise),
+            dim=1,
+        )).view(-1, 2, 2)
+        velocity_loc = velocity_stats[:, :, 0]
+        velocity_scale = softplus(velocity_stats[:, :, 1])
+        q.normal(loc=velocity_loc, scale=velocity_scale, name='velocity')
+
+    def feedback(self, p, prev_dir, prev_pos, uncertainty, noise, data={}):
+        stats = self.direction_feedback(torch.cat(
+            (p['velocity'].value, p['position'].value, uncertainty, noise),
+            dim=1,
+        )).view(-1, 2, 4)
+        return torch.unbind(stats, dim=-1)
