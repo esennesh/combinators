@@ -48,16 +48,10 @@ class WeightedSampler(torch.nn.Module):
         p = probtorch.NestedTrace(q=q)
         result = self.target(p, *args, **kwargs)
 
-        device = 'cpu'
-        for v in p.values():
-            device = v.log_prob.device
-            if device != 'cpu':
-                break
         dims = tuple(range(len(self.batch_shape)))
-        null = torch.zeros(self.batch_shape, device=device)
-
-        log_weight = null + p.log_proper_weight(sample_dims=dims)
-        assert log_weight.shape == self.batch_shape
+        log_weight = p.log_proper_weight(sample_dims=dims)
+        if torch.is_tensor(log_weight):
+            assert log_weight.shape == self.batch_shape
 
         return cartesian.tuplify(result), p, log_weight
 
