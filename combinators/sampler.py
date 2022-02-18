@@ -124,9 +124,10 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
         cached, _ = self.peek()
         args = tuple(stored if actual is None else actual for (stored, actual)
                      in zip(cached[0][1:], args))
-        kwargs = {**kwargs, **cached[1]}
-        kwargs = {k: cached[1][k] if kwargs[k] is None else kwargs[k]
-                  for k in kwargs}
+        kwargs = {
+            k: cached[1][k] if k not in kwargs or kwargs[k] is None else
+               kwargs[k] for k in kwargs.keys() | cached[1].keys()
+        }
 
         fwd = args[:len(self.dom.upper)]
         self.replay(*fwd, **kwargs)
