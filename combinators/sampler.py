@@ -153,7 +153,8 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
 
     def smooth(self, *args, **kwargs):
         if self._target.pass_data:
-            kwargs = {**self.data, **kwargs}
+            _, data = self._target.expand_args((), **self.data)
+            kwargs = {**data, **kwargs}
         dims = tuple(range(len(self._target.batch_shape)))
         fwd = args[:len(self.dom.upper)]
         bkwd = args[len(self.dom.upper):]
