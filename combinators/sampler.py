@@ -169,7 +169,7 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
         self._cache[(cached_fwd, kwargs)] = (result, p, log_v)
 
         # Retrieve the feedback corresponding to the new target trace
-        feedback = cartesian.tuplify(signals(*result))
+        cartesian.tuplify(signals(*result))
         return signal.Signal(len(self.dom.upper), len(self.dom.lower),
                              self.feedback).split()
 
