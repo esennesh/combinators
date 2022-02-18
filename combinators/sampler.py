@@ -129,9 +129,8 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
                kwargs[k] for k in kwargs.keys() | cached[1].keys()
         }
 
-        fwd = args[:len(self.dom.upper)]
-        self.replay(*fwd, **kwargs)
-        _, p, _ = self._cache(None, *fwd, **kwargs)
+        self.replay(*args, **kwargs)
+        _, p, _ = self._cache(None, *args, **kwargs)
         return self._proposal.feedback(p, *args, **kwargs)
 
     def smooth(self, *args, **kwargs):
