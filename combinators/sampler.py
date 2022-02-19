@@ -97,7 +97,10 @@ class Copy(lens.Copy):
                 if len(y.shape) < len(x.shape):
                     return torch.cat((x, y.unsqueeze(1)), dim=1)
             return (x, y)
-        return signal.Signal(sx.dom, sx.cod, sig)
+        def sig_update(*arg):
+            sx.update(*arg)
+            sy.update(*arg)
+        return signal.Signal(sx.dom, sig, sig_update)
 
 class ImportanceWiringBox(lens.CartesianWiringBox):
     def __init__(self, name, dom, cod, target, proposal, data={}):
