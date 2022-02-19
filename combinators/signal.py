@@ -30,8 +30,8 @@ class Signal(rigid.Box):
     def update(self):
         return self._update
 
-    def __call__(self, *args, **kwargs):
-        return self._function(*args, **kwargs)
+    def __call__(self):
+        return self._function()
 
     @staticmethod
     def id(dom=0):
@@ -59,10 +59,8 @@ class Signal(rigid.Box):
 
     def __getitem__(self, key):
         if isinstance(key, int):
-            def index_signal(val):
-                args = [None for _ in range(len(self.dom))]
-                args[key] = val
-                return self(*args)[key]
+            def index_signal():
+                return self._function()[key]
             def index_update(val):
                 args = [None for _ in range(len(self.dom))]
                 args[key] = val
@@ -71,11 +69,8 @@ class Signal(rigid.Box):
         if isinstance(key, slice):
             indices = list(itertools.islice(range(len(self.dom)), key.start,
                                             key.stop, key.step))
-            def slice_signal(*vals):
-                args = [None for _ in range(len(self.dom))]
-                for i, v in zip(indices, vals):
-                    args[i] = v
-                return self(*args)[key]
+            def slice_signal():
+                return self._function()[key]
             def slice_update(*vals):
                 args = [None for _ in range(len(self.dom))]
                 for i, v in zip(indices, vals):
