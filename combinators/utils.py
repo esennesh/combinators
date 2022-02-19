@@ -67,6 +67,12 @@ class TensorialCache:
     def peek(self):
         return self._cache[-1]
 
+def tensorial_eqs(xs, ys):
+    return all(tensorial_eq(x, y) for (x, y) in zip(xs, ys))
+
+def tensorial_dict_eq(xs, ys):
+    return all(tensorial_eq(xs[k], ys[k]) for k in ys)
+
 def tensorial_eq(x, y):
     if isinstance(x, torch.Tensor) and isinstance(y, torch.Tensor):
         return (x == y).all()
