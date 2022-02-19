@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from functools import lru_cache, reduce
+from functools import lru_cache, partial, reduce
 import inspect
 import probtorch
 import torch
@@ -109,6 +109,7 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
         assert isinstance(proposal, torch.nn.Module)
         self._proposal = proposal
         self._cache = utils.TensorialCache(None, self._target.forward)
+        self._fb_cache = utils.TensorialCache(None, self._proposal.feedback)
 
         super().__init__(name, dom, cod, self.filter, self.smooth, data=data)
 
@@ -133,15 +134,7 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
         result, _, _ = self._cache(None, *args, **kwargs)
         return result
 
-    def replay(self, *args, **kwargs):
-        cached = ((None, *args), kwargs) in self._cache
-        if not cached:
-            _, (_, q, _) = self.peek()
-            result, p, log_weight = self._target.forward(q, *args, **kwargs)
-            self._cache[((None, *args), kwargs)] = (result, p, log_weight)
-        return cached
-
-    def feedback(self, *args, **kwargs):
+    def fill_args(self, *args, **kwargs):
         cached, _ = self.peek()
         args = tuple(stored if actual is None else actual for (stored, actual)
                      in zip(cached[0][1:], args))
@@ -149,10 +142,27 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
             k: cached[1][k] if k not in kwargs or kwargs[k] is None else
                kwargs[k] for k in kwargs.keys() | cached[1].keys()
         }
+        return args, kwargs
 
-        self.replay(*args, **kwargs)
-        _, p, _ = self._cache(None, *args, **kwargs)
-        return self._proposal.feedback(p, *args, **kwargs)
+    def replay(self, kont, *args, **kwargs):
+        args, kwargs = self.fill_args(*args, **kwargs)
+
+        if ((None, *args), kwargs) in self._cache:
+            result, p, _ = self._cache(None, *args, **kwargs)
+            kontinue = False
+        else:
+            _, (stored_result, q, _) = self.peek()
+            result, p, log_weight = self._target.forward(q, *args, **kwargs)
+            self._cache[((None, *args), kwargs)] = (result, p, log_weight)
+            kontinue = not utils.tensorial_eqs(stored_result, result)
+
+        if kont and kontinue:
+            kont(*result)
+
+    def feedback(self, *args, **kwargs):
+        args, kwargs = self.fill_args(*args, **kwargs)
+        _, (_, p, _) = self._cache.peek()
+        return self._fb_cache(p, *args, **kwargs)
 
     def smooth(self, *args, **kwargs):
         if self._target.pass_data:
@@ -160,8 +170,6 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
             kwargs = {**data, **kwargs}
         dims = tuple(range(len(self._target.batch_shape)))
         fwd = args[:len(self.dom.upper)]
-        bkwd = args[len(self.dom.upper):]
-        signals = reduce(lambda f, g: f @ g, bkwd, signal.Signal.id(0))
         cached_fwd = (None, *fwd)
 
         # Retrieve the stored target trace from the cache, initializing by
@@ -170,6 +178,8 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
         log_orig = p.log_joint(sample_dims=dims)
 
         # Retrieve the feedback corresponding to the stored target trace
+        bkwd = args[len(self.dom.upper):]
+        signals = reduce(lambda f, g: f @ g, bkwd, signal.Signal.id(0))
         feedback = cartesian.tuplify(signals(*stored_result))
 
         # Rescore the original trace under the proposal kernel
@@ -189,10 +199,12 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
         log_v = log_v + (log_update + log_rk) - (log_orig + log_fk)
         self._cache[(cached_fwd, kwargs)] = (result, p, log_v)
 
-        # Retrieve the feedback corresponding to the new target trace
-        cartesian.tuplify(signals(*result))
-        return signal.Signal(len(self.dom.upper), len(self.dom.lower),
-                             self.feedback).split()
+        # Update the downstream computation
+        signals.update(*result)
+
+        # Return the feedback corresponding to the new target trace
+        return signal.Signal(len(self.dom.upper), self.feedback,
+                             partial(self.replay, signals.update)).split()
 
 def importance_box(name, target, batch_shape, proposal, dom, cod, data={}):
     if not isinstance(dom, lens.Ty):
