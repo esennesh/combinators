@@ -60,3 +60,11 @@ class Signal:
 
     def split(self):
         return tuple(self[i] for i in range(len(self.dom)))
+
+class Cap(lens.Cap):
+    def cap_put(self, *_):
+        def cap_signal():
+            return self._vals
+        def cap_update(*_):
+            pass
+        return Signal(len(self.dom), cap_signal, cap_update).split()
