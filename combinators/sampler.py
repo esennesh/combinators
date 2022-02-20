@@ -88,7 +88,8 @@ class Copy(lens.Copy):
     @staticmethod
     def join(sx, sy):
         def sig(*arg):
-            x, y = sx(*arg), sy(*arg)
+            x = cartesian.untuplify(*sx(*arg))
+            y = cartesian.untuplify(*sy(*arg))
             if torch.is_tensor(x) and torch.is_tensor(y):
                 if len(x.shape) == len(y.shape):
                     return torch.stack((x, y), dim=1)
