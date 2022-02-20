@@ -3,6 +3,20 @@
 import torch
 import torch.nn as nn
 
+class InitialObjectCodes(nn.Module):
+    def __init__(self, what_dim):
+        super().__init__()
+        self._dim = what_dim
+
+        self.register_buffer('what_loc', torch.zeros(what_dim))
+        self.register_buffer('what_scale', torch.ones(what_dim))
+
+    def forward(self, p, batch_shape=(1, 1, 1)):
+        what_locs = self.what_loc.expand(*batch_shape, self._dim)
+        what_scales = self.what_scale.expand(*batch_shape, self._dim)
+
+        return p.normal(what_locs, what_scales, name='z^{what}')
+
 class StepObjects(nn.Module):
     def __init__(self, hidden_dim, where_dim, what_dim, spatial_transform):
         super().__init__()
