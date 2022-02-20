@@ -25,6 +25,8 @@ def infer(diagram, num_iterations, objective=elbo, use_cuda=True, lr=1e-3,
                 box.proposal.cuda()
 
     graph = sampler.compile(diagram >> signal.Cap(diagram.cod))
+    filtering = sampler.filtering(graph)
+    smoothing = sampler.smoothing(graph)
     theta, phi = sampler.parameters(graph)
     optimizer = torch.optim.Adam(theta | phi, lr=lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -34,9 +36,10 @@ def infer(diagram, num_iterations, objective=elbo, use_cuda=True, lr=1e-3,
     objs = torch.zeros(num_iterations, requires_grad=False)
     for t in range(num_iterations):
         optimizer.zero_grad()
-        sampler.filter(graph)
 
-        sampler.smooth(graph)
+        filtering()
+        smoothing()
+
         _, log_weight = sampler.trace(graph)
         loss = objective(log_weight)
 
