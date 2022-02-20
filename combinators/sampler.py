@@ -223,15 +223,21 @@ def importance_box(name, target, batch_shape, proposal, dom, cod, data={}):
 def compile(diagram):
     return ImportanceBox.IMPORTANCE_SEMANTICS(diagram)
 
-def filter(diagram, *args, **kwargs):
+def filtering(diagram):
     if not isinstance(diagram, wiring.Diagram):
         diagram = compile(diagram)
-    return lens.getter(diagram)(*args, **kwargs)
+    return lens.getter(diagram)
+
+def filter(diagram, *args, **kwargs):
+    return filtering(diagram)(*args, **kwargs)
+
+def smoothing(diagram):
+    if not isinstance(diagram, wiring.Diagram):
+        diagram = compile(diagram)
+    return lens.putter(diagram)
 
 def smooth(diagram, *args, **kwargs):
-    if not isinstance(diagram, wiring.Diagram):
-        diagram = compile(diagram)
-    return lens.putter(diagram)(*args, **kwargs)
+    return smoothing(diagram)(*args, **kwargs)
 
 def trace(diagram):
     assert isinstance(diagram, wiring.Diagram)
