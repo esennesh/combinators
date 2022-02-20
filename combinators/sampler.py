@@ -157,7 +157,8 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
             kontinue = not utils.tensorial_eqs(stored_result, result)
 
         if kont and kontinue:
-            kont(*result)
+            for wire, r in zip(kont, result):
+                wire.update(r)
 
     def feedback(self):
         (args, kwargs), (_, p, _) = self._cache.peek()
@@ -173,13 +174,14 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
 
         # Retrieve the stored target trace from the cache, initializing by
         # filtering if necessary.
-        stored_result, p, log_v = self._cache(*cached_fwd, **kwargs)
+        _, p, log_v = self._cache(*cached_fwd, **kwargs)
         log_orig = p.log_joint(sample_dims=dims)
 
         # Retrieve the feedback corresponding to the stored target trace
-        bkwd = args[len(self.dom.upper):]
-        signals = reduce(lambda f, g: f @ g, bkwd, signal.Signal.id(0))
-        feedback = cartesian.tuplify(signals(*stored_result))
+        wires = args[len(self.dom.upper):]
+        feedback = ()
+        for w in wires:
+            feedback = feedback + w()
 
         # Rescore the original trace under the proposal kernel
         q = probtorch.NestedTrace(q=p)
@@ -199,11 +201,12 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
         self._cache[(cached_fwd, kwargs)] = (result, p, log_v)
 
         # Update the downstream computation
-        signals.update(*result)
+        for w, r in zip(wires, result):
+            w.update(r)
 
         # Return the feedback corresponding to the new target trace
         return signal.Signal(len(self.dom.upper), self.feedback,
-                             partial(self.replay, signals.update)).split()
+                             partial(self.replay, wires)).split()
 
 def importance_box(name, target, batch_shape, proposal, dom, cod, data={}):
     if not isinstance(dom, lens.Ty):
