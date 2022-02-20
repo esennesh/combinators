@@ -17,6 +17,20 @@ class InitialObjectCodes(nn.Module):
 
         return p.normal(what_locs, what_scales, name='z^{what}')
 
+class InitialObjectLocations(nn.Module):
+    def __init__(self, where_dim):
+        super().__init__()
+        self._dim = where_dim
+
+        self.register_buffer('where_0_loc', torch.zeros(where_dim))
+        self.register_buffer('where_0_scale', torch.ones(where_dim))
+
+    def forward(self, p, batch_shape=(1, 1, 1)):
+        where_locs = self.where_0_loc.expand(*batch_shape, self._dim)
+        where_scales = self.where_0_scale.expand(*batch_shape, self._dim)
+
+        return p.normal(where_locs, where_scales, name='z^{where}')
+
 class StepObjects(nn.Module):
     def __init__(self, hidden_dim, where_dim, what_dim, spatial_transform):
         super().__init__()
