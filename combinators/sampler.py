@@ -110,7 +110,6 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
         assert isinstance(proposal, torch.nn.Module)
         self._proposal = proposal
         self._cache = utils.TensorialCache(None, self._target.forward)
-        self._fb_cache = utils.TensorialCache(None, self._proposal.feedback)
 
         super().__init__(name, dom, cod, self.filter, self.smooth, data=data)
 
@@ -160,10 +159,9 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
         if kont and kontinue:
             kont(*result)
 
-    def feedback(self, *args, **kwargs):
-        args, kwargs = self.fill_args(*args, **kwargs)
-        _, (_, p, _) = self._cache.peek()
-        return self._fb_cache(p, *args, **kwargs)
+    def feedback(self):
+        (args, kwargs), (_, p, _) = self._cache.peek()
+        return self._proposal.feedback(p, *args[1:], **kwargs)
 
     def smooth(self, *args, **kwargs):
         if self._target.pass_data:
