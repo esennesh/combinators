@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from functools import lru_cache, reduce
+from functools import lru_cache, partial, reduce
 import inspect
 import probtorch
 import torch
@@ -88,7 +88,8 @@ class Copy(lens.Copy):
     @staticmethod
     def join(sx, sy):
         def sig(*arg):
-            x, y = sx(*arg), sy(*arg)
+            x = cartesian.untuplify(*sx(*arg))
+            y = cartesian.untuplify(*sy(*arg))
             if torch.is_tensor(x) and torch.is_tensor(y):
                 if len(x.shape) == len(y.shape):
                     return torch.stack((x, y), dim=1)
@@ -97,7 +98,10 @@ class Copy(lens.Copy):
                 if len(y.shape) < len(x.shape):
                     return torch.cat((x, y.unsqueeze(1)), dim=1)
             return (x, y)
-        return signal.Signal(sx.dom, sx.cod, sig)
+        def sig_update(*arg):
+            sx.update(*arg)
+            sy.update(*arg)
+        return signal.Signal(sx.dom, sig, sig_update)
 
 class ImportanceWiringBox(lens.CartesianWiringBox):
     def __init__(self, name, dom, cod, target, proposal, data={}):
@@ -130,15 +134,7 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
         result, _, _ = self._cache(None, *args, **kwargs)
         return result
 
-    def replay(self, *args, **kwargs):
-        cached = ((None, *args), kwargs) in self._cache
-        if not cached:
-            _, (_, q, _) = self.peek()
-            result, p, log_weight = self._target.forward(q, *args, **kwargs)
-            self._cache[((None, *args), kwargs)] = (result, p, log_weight)
-        return cached
-
-    def feedback(self, *args, **kwargs):
+    def fill_args(self, *args, **kwargs):
         cached, _ = self.peek()
         args = tuple(stored if actual is None else actual for (stored, actual)
                      in zip(cached[0][1:], args))
@@ -146,10 +142,27 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
             k: cached[1][k] if k not in kwargs or kwargs[k] is None else
                kwargs[k] for k in kwargs.keys() | cached[1].keys()
         }
+        return args, kwargs
 
-        self.replay(*args, **kwargs)
-        _, p, _ = self._cache(None, *args, **kwargs)
-        return self._proposal.feedback(p, *args, **kwargs)
+    def replay(self, kont, *args, **kwargs):
+        args, kwargs = self.fill_args(*args, **kwargs)
+
+        if ((None, *args), kwargs) in self._cache:
+            result, p, _ = self._cache(None, *args, **kwargs)
+            kontinue = False
+        else:
+            _, (stored_result, q, _) = self.peek()
+            result, p, log_weight = self._target.forward(q, *args, **kwargs)
+            self._cache[((None, *args), kwargs)] = (result, p, log_weight)
+            kontinue = not utils.tensorial_eqs(stored_result, result)
+
+        if kont and kontinue:
+            for wire, r in zip(kont, result):
+                wire.update(r)
+
+    def feedback(self):
+        (args, kwargs), (_, p, _) = self._cache.peek()
+        return self._proposal.feedback(p, *args[1:], **kwargs)
 
     def smooth(self, *args, **kwargs):
         if self._target.pass_data:
@@ -157,17 +170,18 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
             kwargs = {**data, **kwargs}
         dims = tuple(range(len(self._target.batch_shape)))
         fwd = args[:len(self.dom.upper)]
-        bkwd = args[len(self.dom.upper):]
-        signals = reduce(lambda f, g: f @ g, bkwd, signal.Signal.id(0))
         cached_fwd = (None, *fwd)
 
         # Retrieve the stored target trace from the cache, initializing by
         # filtering if necessary.
-        stored_result, p, log_v = self._cache(*cached_fwd, **kwargs)
+        _, p, log_v = self._cache(*cached_fwd, **kwargs)
         log_orig = p.log_joint(sample_dims=dims)
 
         # Retrieve the feedback corresponding to the stored target trace
-        feedback = cartesian.tuplify(signals(*stored_result))
+        wires = args[len(self.dom.upper):]
+        feedback = ()
+        for w in wires:
+            feedback = feedback + w()
 
         # Rescore the original trace under the proposal kernel
         q = probtorch.NestedTrace(q=p)
@@ -186,10 +200,13 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
         log_v = log_v + (log_update + log_rk) - (log_orig + log_fk)
         self._cache[(cached_fwd, kwargs)] = (result, p, log_v)
 
-        # Retrieve the feedback corresponding to the new target trace
-        cartesian.tuplify(signals(*result))
-        return signal.Signal(len(self.dom.upper), len(self.dom.lower),
-                             self.feedback).split()
+        # Update the downstream computation
+        for w, r in zip(wires, result):
+            w.update(r)
+
+        # Return the feedback corresponding to the new target trace
+        return signal.Signal(len(self.dom.upper), self.feedback,
+                             partial(self.replay, wires)).split()
 
 def importance_box(name, target, batch_shape, proposal, dom, cod, data={}):
     if not isinstance(dom, lens.Ty):
@@ -206,15 +223,21 @@ def importance_box(name, target, batch_shape, proposal, dom, cod, data={}):
 def compile(diagram):
     return ImportanceBox.IMPORTANCE_SEMANTICS(diagram)
 
-def filter(diagram, *args, **kwargs):
+def filtering(diagram):
     if not isinstance(diagram, wiring.Diagram):
         diagram = compile(diagram)
-    return lens.getter(diagram)(*args, **kwargs)
+    return lens.getter(diagram)
+
+def filter(diagram, *args, **kwargs):
+    return filtering(diagram)(*args, **kwargs)
+
+def smoothing(diagram):
+    if not isinstance(diagram, wiring.Diagram):
+        diagram = compile(diagram)
+    return lens.putter(diagram)
 
 def smooth(diagram, *args, **kwargs):
-    if not isinstance(diagram, wiring.Diagram):
-        diagram = compile(diagram)
-    return lens.putter(diagram)(*args, **kwargs)
+    return smoothing(diagram)(*args, **kwargs)
 
 def trace(diagram):
     assert isinstance(diagram, wiring.Diagram)
