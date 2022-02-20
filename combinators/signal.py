@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
 
-from abc import abstractmethod
-from functools import reduce, wraps
 import itertools
 
-from discopy import cartesian, messages, monoidal, rigid
+from discopy import cartesian, messages, monoidal
 
-class Signal(rigid.Box):
+from . import lens
+
+class Signal:
     """
     Wraps Python functions that can be sliced into separate wires, each of which
     may have a cached default value, with domain and codomain information.
     """
     def __init__(self, dom, function, update):
+        self._dom = monoidal.PRO(dom)
         assert callable(function)
         self._function = function
         assert callable(update)
         self._update = update
-
-        super().__init__(repr(function), monoidal.PRO(dom), monoidal.PRO(dom))
 
     def __repr__(self):
         return "Signal(dom={}, function={}, update={})".format(
@@ -27,35 +26,15 @@ class Signal(rigid.Box):
         return repr(self)
 
     @property
+    def dom(self):
+        return self._dom
+
+    @property
     def update(self):
         return self._update
 
     def __call__(self):
-        return self._function()
-
-    @staticmethod
-    def id(dom=0):
-        return Signal(dom, cartesian.untuplify, lambda *xs: None)
-
-    def tensor(self, *others):
-        assert len(others) == 1
-        other = others[0]
-        if not isinstance(other, Signal):
-            raise TypeError(messages.type_err(Signal, other))
-        dom = self.dom @ other.dom
-        if dom == self.dom:
-            return self
-        if dom == other.dom:
-            return other
-
-        def product(*vals):
-            vals0 = cartesian.tuplify(self(*vals[:len(self.dom)]))
-            vals1 = cartesian.tuplify(other(*vals[len(self.dom):]))
-            return cartesian.untuplify(*(vals0 + vals1))
-        def product_eff(*vals):
-            self.update(*vals[:len(self.dom)])
-            other.update(*vals[len(self.dom):])
-        return Signal(dom, product, product_eff)
+        return cartesian.tuplify(self._function())
 
     def __getitem__(self, key):
         if isinstance(key, int):
