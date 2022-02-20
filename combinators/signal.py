@@ -12,7 +12,7 @@ class Signal:
     may have a cached default value, with domain and codomain information.
     """
     def __init__(self, dom, function, update):
-        self._dom = monoidal.PRO(dom)
+        self._dom = dom
         assert callable(function)
         self._function = function
         assert callable(update)
@@ -41,25 +41,25 @@ class Signal:
             def index_signal():
                 return self._function()[key]
             def index_update(val):
-                args = [None for _ in range(len(self.dom))]
+                args = [None for _ in range(self.dom)]
                 args[key] = val
                 self.update(*args)
-            return Signal(self.dom[key], index_signal, index_update)
+            return Signal(1, index_signal, index_update)
         if isinstance(key, slice):
-            indices = list(itertools.islice(range(len(self.dom)), key.start,
+            indices = list(itertools.islice(range(self.dom), key.start,
                                             key.stop, key.step))
             def slice_signal():
                 return self._function()[key]
             def slice_update(*vals):
-                args = [None for _ in range(len(self.dom))]
+                args = [None for _ in range(self.dom)]
                 for i, v in zip(indices, vals):
                     args[i] = v
                 self.update(*args)
-            return Signal(self.dom[key], slice_signal, slice_update)
+            return Signal(key.stop-key.start, slice_signal, slice_update)
         raise TypeError(messages.type_err((int, slice), key))
 
     def split(self):
-        return tuple(self[i] for i in range(len(self.dom)))
+        return tuple(self[i] for i in range(self.dom))
 
 class Cap(lens.Cap):
     def cap_put(self, *_):
