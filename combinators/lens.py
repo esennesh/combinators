@@ -204,6 +204,20 @@ class Unit(CartesianBox):
         super().__init__('Unit(%d)' % len(cod), PRO(0), cod, unit,
                          lambda *args: ())
 
+class Cap(CartesianBox):
+    def __init__(self, dom):
+        assert isinstance(dom, Ty)
+        self._vals = (None,) * len(dom)
+        super().__init__('Cap(%d)' % len(dom), dom, PRO(0), self.cap_get,
+                         self.cap_put)
+
+    def cap_get(self, *args):
+        self._vals = args
+        return ()
+
+    def cap_put(self, *_):
+        return self._vals
+
 class Copy(CartesianBox):
     def __init__(self, dom, n=2, join=None):
         self._join = join if join else lambda x, y: (x, y)
