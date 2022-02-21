@@ -44,5 +44,10 @@ class TransitionAndEmission(nn.Module):
 
         return mus, sigmas, pi, zs
 
-    def update(self, p):
-        return (), p
+class TransitionProposal(nn.Module):
+    def forward(self, q, mus, sigmas, pi, z, nextmus, nextsigmas, nextpi, nextz,
+                data=None):
+        pass
+
+    def feedback(self, p, mus, sigmas, pi, z, data=None):
+        return mus, sigmas, pi, z
