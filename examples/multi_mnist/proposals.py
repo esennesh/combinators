@@ -5,6 +5,28 @@ import torch.distributions as dist
 import torch.nn as nn
 import torch.nn.functional as F
 
+class ObjectCodesProposal(nn.Module):
+    def __init__(self, spatial_transform, hidden_dim, what_dim):
+        super().__init__()
+        self.spatial_transformer = spatial_transform
+
+        self.object_hiddens = nn.Sequential(
+            nn.Linear(spatial_transform.img_side ** 2, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim // 2), nn.ReLU(),
+        )
+        self.what_loc = nn.Linear(hidden_dim // 2, what_dim)
+        self.what_log_scale = nn.Linear(hidden_dim // 2, what_dim)
+
+    def forward(self, q, wheres, frames):
+        cropped = self.spatial_transformer.image2glimpse(frames, wheres)
+        cropped = torch.flatten(cropped, -2, -1)
+        hiddens = self.object_hiddens(cropped).mean(dim=2)
+
+        loc = self.what_loc(hiddens)
+        scale = self.what_log_scale(hiddens).exp()
+
+        q.normal(loc, scale, name='z^{what}')
+
 class StepLocationsProposal(nn.Module):
     def __init__(self, spatial_transform, features_side, hidden_dim, where_dim):
         super().__init__()
