@@ -27,6 +27,9 @@ class ObjectCodesProposal(nn.Module):
 
         q.normal(loc, scale, name='z^{what}')
 
+    def feedback(self, p):
+        return ()
+
 class StepLocationsProposal(nn.Module):
     def __init__(self, spatial_transform, features_side, hidden_dim, where_dim):
         super().__init__()
