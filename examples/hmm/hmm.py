@@ -26,8 +26,12 @@ class Parameters(nn.Module):
         z0 = p.variable(Categorical, probs=pi[:, 0], name='z_0')
         return mus, sigmas, pi, z0
 
-    def update(self, p):
-        return (), p
+class ParametersProposal(nn.Module):
+    def forward(self, q, batch_shape=(1,)):
+        pass
+
+    def feedback(self, p, batch_shape=(1,)):
+        return ()
 
 class TransitionAndEmission(nn.Module):
     def forward(self, p, mus, sigmas, pi, z, data=None):
