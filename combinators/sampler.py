@@ -121,6 +121,10 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
     def proposal(self):
         return self._proposal
 
+    @property
+    def cache(self):
+        return self._cache
+
     def peek(self):
         return self._cache.peek()
 
@@ -243,7 +247,7 @@ def trace(diagram):
     assert isinstance(diagram, wiring.Diagram)
     merge = utils.TracingMerger()
     for f in diagram:
-        if isinstance(f, ImportanceWiringBox):
+        if isinstance(f, ImportanceWiringBox) and f.cache:
             _, (_, p, log_weight) = f.peek()
             merge(p, log_weight)
     return merge.p, merge.log_weight

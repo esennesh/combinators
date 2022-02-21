@@ -21,13 +21,17 @@ class Parameters(nn.Module):
     def forward(self, p, batch_shape=(1,)):
         mus, sigmas = self.states(p, batch_shape=batch_shape)
         pi = utils.batch_expand(self.pi, batch_shape)
-        pi = torch.stack([p.dirichlet(pi, name='pi_%d' % (k+1)) for k
+        pi = torch.stack([p.dirichlet(pi, name='pi%d' % (k+1)) for k
                           in range(self._num_states)], dim=-1)
         z0 = p.variable(Categorical, probs=pi[:, 0], name='z_0')
         return mus, sigmas, pi, z0
 
-    def update(self, p):
-        return (), p
+class ParametersProposal(nn.Module):
+    def forward(self, q, batch_shape=(1,)):
+        pass
+
+    def feedback(self, p, batch_shape=(1,)):
+        return ()
 
 class TransitionAndEmission(nn.Module):
     def forward(self, p, mus, sigmas, pi, z, data=None):
@@ -40,5 +44,10 @@ class TransitionAndEmission(nn.Module):
 
         return mus, sigmas, pi, zs
 
-    def update(self, p):
-        return (), p
+class TransitionProposal(nn.Module):
+    def forward(self, q, mus, sigmas, pi, z, nextmus, nextsigmas, nextpi, nextz,
+                data=None):
+        pass
+
+    def feedback(self, p, mus, sigmas, pi, z, data=None):
+        return mus, sigmas, pi, z
