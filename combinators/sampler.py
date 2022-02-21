@@ -121,6 +121,10 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
     def proposal(self):
         return self._proposal
 
+    @property
+    def cache(self):
+        return self._cache
+
     def peek(self):
         return self._cache.peek()
 
