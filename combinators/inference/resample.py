@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
+from abc import abstractmethod
 from discopy import cartesian, monoidal
 from functools import wraps
 from probtorch import RandomVariable
 import torch
+import torch.nn.functional as F
 
 from .. import lens, sampler, utils
 
@@ -21,42 +23,93 @@ def index_select_rv(rv, batch_shape, ancestors):
                                 **rv.dist_kwargs)
     return result
 
-class ResamplingFunctor(lens.LensSemanticsFunctor):
-    def __init__(self, root):
-        self._root = root
-        super().__init__(lambda ob: ob, self.arrow)
+class Resampler:
+    def __init__(self, diagram):
+        self._diagram = diagram
 
-    def arrow(self, f):
-        return f.fold(self.resample_box)
+    @property
+    def diagram(self):
+        return self._diagram
 
-    def resample_box(self, box):
-        if isinstance(box, tracing.TracedLensFunction):
-            return lens.hook(box, post_sample=ResamplingSample(self._root))
-        return box
+    @abstractmethod
+    def ancestor_indices(self, log_weight):
+        pass
 
-class ResamplingSample:
-    def __init__(self, root):
-        self.root = root
+    @staticmethod
+    def resample_box(box, ancestors, batch_shape):
+        (args, kwargs), (results, p, lw) = box.peek()
+        args, results = list(args), list(results)
+        for i, arg in enumerate(args):
+            if torch.is_tensor(arg):
+                args[i] = collapsed_index_select(arg, batch_shape,
+                                                 ancestors)
+        for k, v in kwargs.items():
+            if k != 'data' and torch.is_tensor(v):
+                kwargs[k] = collapsed_index_select(v, batch_shape,
+                                                   ancestors)
+        for i, result in enumerate(results):
+            if torch.is_tensor(result):
+                results[i] = collapsed_index_select(result, batch_shape,
+                                                    ancestors)
 
-    def __call__(this, self, vals):
-        log_weight, _ = tracing._trace(this.root).fold()
-        if (log_weight == 0.).all():
+        index = lambda rv: index_select_rv(rv, batch_shape, ancestors)
+        p = utils.trace_map(p, index)
+        if torch.is_tensor(lw):
+            lw = utils.batch_mean(lw, batch_shape).expand(*batch_shape)
+
+        box.cache[(args, kwargs)] = (results, p, lw)
+
+    def resample_diagram(self, *vals):
+        _, log_weight = sampler.trace(self.diagram)
+        if not torch.is_tensor(log_weight) or (log_weight == 0.).all():
             return vals
-        ancestors, _ = utils.gumbel_max_resample(log_weight)
+        ancestors = self.ancestor_indices(log_weight)
         batch_shape = log_weight.shape
 
-        vals = list(cartesian.tuplify(vals))
-        for i, v in enumerate(vals):
-            if isinstance(v, torch.Tensor):
-                vals[i] = collapsed_index_select(v, batch_shape, ancestors)
-        vals = cartesian.untuplify(tuple(vals))
+        for box in self.diagram:
+            if isinstance(box, sampler.ImportanceWiringBox) and box.cache:
+                self.resample_box(box, ancestors, batch_shape)
 
-        self.trace.log_weight = self.trace.log_weight.mean(dim=0, keepdim=True)
-        resample = lambda rv: index_select_rv(rv, batch_shape, ancestors)
-        self.trace.probs = utils.trace_map(self.trace.probs, resample)
-        self.trace.retval = vals
+        vals = list(vals)
+        for i, val in enumerate(vals):
+            if torch.is_tensor(val):
+                vals[i] = collapsed_index_select(val, batch_shape, ancestors)
+        return tuple(vals)
 
-        return vals
+class SystematicResampler(Resampler):
+    def ancestor_indices(self, log_weight):
+        log_weights, _ = utils.batch_collapse(log_weight, log_weight.shape)
+        weights = F.softmax(log_weights, dim=0)
+        K = weights.shape[0]
 
-def resampler(semantics):
-    return ResamplingFunctor(semantics)(semantics)
+        positions = torch.arange(K, device=weights.device) +\
+                    torch.rand(1, device=weights.device)
+        positions = positions / K
+
+        indices = torch.zeros(K, device=weights.device, dtype=torch.int)
+        cumulative_sum = torch.cumsum(weights)
+        i, j = 0, 0
+        while i < K:
+            if positions[i] < cumulative_sum[j]:
+                indices[i] = j
+                i += 1
+            else:
+                j += 1
+        return indices.reshape(*log_weight.shape)
+
+class MultinomialResampler(Resampler):
+    def ancestor_indices(self, log_weight):
+        log_weights, _ = utils.batch_collapse(log_weight, log_weight.shape)
+        weights = F.softmax(log_weights, dim=0).unsqueeze(dim=0)
+        indices = torch.multinomial(weights, weights.shape[1], replacement=True)
+        return indices.reshape(*log_weight.shape)
+
+def hook_resampling(graph, method='get', resampler_cls=SystematicResampler):
+    resampler = resampler_cls(graph)
+
+    for box in graph:
+        if isinstance(box, sampler.ImportanceWiringBox):
+            if method == 'get':
+                lens.hook(box, post_get=resampler.resample_diagram)
+            elif method == 'put':
+                lens.hook(box, post_put=resampler.resample_diagram)
