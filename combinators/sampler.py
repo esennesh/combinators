@@ -247,7 +247,7 @@ def trace(diagram):
     assert isinstance(diagram, wiring.Diagram)
     merge = utils.TracingMerger()
     for f in diagram:
-        if isinstance(f, ImportanceWiringBox):
+        if isinstance(f, ImportanceWiringBox) and f.cache:
             _, (_, p, log_weight) = f.peek()
             merge(p, log_weight)
     return merge.p, merge.log_weight
