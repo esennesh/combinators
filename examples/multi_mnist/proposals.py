@@ -45,13 +45,13 @@ class StepLocationsProposal(nn.Module):
             nn.Linear(hidden_dim // 2, where_dim)
         )
 
-    def forward(self, q, conv_kernel, data=None):
+    def forward(self, q, wheres, whats, conv_kernel, data=None):
         _, _, K, glimpse_side, _ = conv_kernel.shape
         P, B, _, img_side, _ = data.shape
 
         locs = []
         scales = []
-        wheres = []
+        q_wheres = []
         framebuffer = data
         for k in range(K):
             features = framebuffer.view(P * B, img_side, img_side).unsqueeze(0)
@@ -71,7 +71,7 @@ class StepLocationsProposal(nn.Module):
             scales.append(where_scale)
 
             where = dist.Normal(where_loc, where_scale).rsample()
-            wheres.append(where)
+            q_wheres.append(where)
 
             reconstruction = self.spatial_transformer.glimpse2image(
                 conv_kernel[:, :, k, :, :].unsqueeze(dim=2),
@@ -81,6 +81,7 @@ class StepLocationsProposal(nn.Module):
 
         where_loc = torch.cat(locs, dim=2)
         where_scale = torch.cat(scales, dim=2)
-        where = torch.cat(wheres, dim=2)
+        where = torch.cat(q_wheres, dim=2)
 
-        q.normal(where_loc, where_scale, value=where, name='z^{where}')
+        where = q.normal(where_loc, where_scale, value=where, name='z^{where}')
+        return where, conv_kernel
