@@ -63,6 +63,7 @@ class StepObjects(nn.Module):
         obj_avgs = self.obj_avg(whats).view(P, B, K,
                                             self.spatial_transformer.img_side,
                                             self.spatial_transformer.img_side)
+        p.loss(lambda v, t: 0., obj_avgs, None, name='object_avgs')
 
         wheres_t = p.normal(wheres, self.where_t_scale, name='z^{where}')
         wheres_t = wheres_t.unsqueeze(dim=2)
