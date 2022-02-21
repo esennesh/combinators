@@ -48,8 +48,8 @@ class StepLocationsProposal(nn.Module):
             nn.Linear(hidden_dim // 2, where_dim)
         )
 
-    def forward(self, q, wheres, whats, conv_kernel, data=None):
-        _, _, K, glimpse_side, _ = conv_kernel.shape
+    def forward(self, q, wheres, whats, recons, data=None):
+        _, _, K, glimpse_side, _ = recons.shape
         P, B, _, img_side, _ = data.shape
 
         locs = []
@@ -58,8 +58,8 @@ class StepLocationsProposal(nn.Module):
         framebuffer = data
         for k in range(K):
             features = framebuffer.view(P * B, img_side, img_side).unsqueeze(0)
-            kernel = conv_kernel[:, :, k, :, :].view(P * B, glimpse_side,
-                                                     glimpse_side).unsqueeze(1)
+            kernel = recons[:, :, k, :, :].view(P * B, glimpse_side,
+                                                glimpse_side).unsqueeze(1)
             features = F.conv2d(features, kernel, groups=int(P * B))
             features_side = features.shape[-1]
             features = F.softmax(features.squeeze(0).view(P, B,
@@ -77,7 +77,7 @@ class StepLocationsProposal(nn.Module):
             q_wheres.append(where)
 
             reconstruction = self.spatial_transformer.glimpse2image(
-                conv_kernel[:, :, k, :, :].unsqueeze(dim=2),
+                recons[:, :, k, :, :].unsqueeze(dim=2),
                 where.unsqueeze(dim=2).unsqueeze(dim=2)
             ).squeeze(dim=2).squeeze(dim=2)
             framebuffer = framebuffer - reconstruction
@@ -86,5 +86,7 @@ class StepLocationsProposal(nn.Module):
         where_scale = torch.cat(scales, dim=2)
         where = torch.cat(q_wheres, dim=2)
 
-        where = q.normal(where_loc, where_scale, value=where, name='z^{where}')
-        return where, conv_kernel
+        q.normal(where_loc, where_scale, value=where, name='z^{where}')
+
+    def feedback(self, p, wheres, whats, data=None):
+        return p['z^{where}'].value, p['object_avgs'].value
