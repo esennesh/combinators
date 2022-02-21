@@ -21,7 +21,7 @@ class Parameters(nn.Module):
     def forward(self, p, batch_shape=(1,)):
         mus, sigmas = self.states(p, batch_shape=batch_shape)
         pi = utils.batch_expand(self.pi, batch_shape)
-        pi = torch.stack([p.dirichlet(pi, name='pi_%d' % (k+1)) for k
+        pi = torch.stack([p.dirichlet(pi, name='pi%d' % (k+1)) for k
                           in range(self._num_states)], dim=-1)
         z0 = p.variable(Categorical, probs=pi[:, 0], name='z_0')
         return mus, sigmas, pi, z0
