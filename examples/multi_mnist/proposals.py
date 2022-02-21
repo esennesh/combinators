@@ -17,8 +17,8 @@ class ObjectCodesProposal(nn.Module):
         self.what_loc = nn.Linear(hidden_dim // 2, what_dim)
         self.what_log_scale = nn.Linear(hidden_dim // 2, what_dim)
 
-    def forward(self, q, wheres, frames):
-        cropped = self.spatial_transformer.image2glimpse(frames, wheres)
+    def forward(self, q, wheres, data=None):
+        cropped = self.spatial_transformer.image2glimpse(data, wheres)
         cropped = torch.flatten(cropped, -2, -1)
         hiddens = self.object_hiddens(cropped).mean(dim=2)
 
