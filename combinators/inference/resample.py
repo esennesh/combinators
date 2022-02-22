@@ -104,12 +104,11 @@ class MultinomialResampler(Resampler):
         indices = torch.multinomial(weights, weights.shape[1], replacement=True)
         return indices.reshape(*log_weight.shape)
 
-def hook_resampling(graph, method='get', resampler_cls=SystematicResampler):
+def hook_resampling(graph, method='get', resampler_cls=SystematicResampler,
+                    when='post'):
     resampler = resampler_cls(graph)
 
     for box in graph:
         if isinstance(box, sampler.ImportanceWiringBox):
-            if method == 'get':
-                lens.hook(box, post_get=resampler.resample_diagram)
-            elif method == 'put':
-                lens.hook(box, post_put=resampler.resample_diagram)
+            kwargs = {when + '_' + method: resampler.resample_diagram}
+            lens.hook(box, **kwargs)
