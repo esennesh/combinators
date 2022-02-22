@@ -11,6 +11,13 @@ def elbo(log_weight, iwae=False):
         return utils.batch_marginalize(log_weight)
     return utils.batch_mean(log_weight)
 
+def eubo(log_weight, iwae=False):
+    probs = utils.normalize_weights(log_weight).detach()
+    particles = probs * log_weight
+    if iwae:
+        return utils.log_sum_exp(particles)
+    return utils.batch_sum(eubo)
+
 def infer(diagram, num_iterations, objective=elbo, use_cuda=True, lr=1e-3,
           patience=50):
     for box in diagram:
