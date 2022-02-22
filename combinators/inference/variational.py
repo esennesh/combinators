@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
+from abc import abstractmethod
 import logging
 import torch
 import torch.nn.functional as F
 
-from .. import sampler, signal, utils
+from .. import lens, sampler, signal, utils
 
 def elbo(log_weight, iwae=False):
     if iwae:
@@ -72,3 +73,26 @@ def infer(diagram, num_iterations, objective=elbo, use_cuda=True, lr=1e-3,
             box.target.eval()
 
     return objs
+
+class VariationalLoss:
+    def __init__(self, *args):
+        self._globals = args
+        self._loss = 0.
+
+    @property
+    def loss(self):
+        return self._loss
+
+    @abstractmethod
+    def objective(self, *args):
+        pass
+
+    def accumulate(self, *vals):
+        self._loss = self._loss + self.objective(*vals)
+        return vals
+
+def hook_variational(graph, variational, method='put', when='post'):
+    for box in graph:
+        if isinstance(box, sampler.ImportanceWiringBox):
+            kwargs = {when + '_' + method: variational.accumulate}
+            lens.hook(box, **kwargs)
