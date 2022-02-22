@@ -31,13 +31,13 @@ class ObjectCodesProposal(nn.Module):
         return ()
 
 class StepLocationsProposal(nn.Module):
-    def __init__(self, spatial_transform, features_side, hidden_dim, where_dim):
+    def __init__(self, spatial_transform, frame_side, hidden_dim, where_dim):
         super().__init__()
         self.spatial_transformer = spatial_transform
-        self._features_side = features_side
+        self._frame_side = frame_side
 
         self.coordinate_hiddens = nn.Sequential(
-            nn.Linear(features_side ** 2, hidden_dim), nn.ReLU()
+            nn.Linear(frame_side ** 2, hidden_dim), nn.ReLU()
         )
         self.where_loc = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim // 2), nn.ReLU(),
@@ -61,9 +61,9 @@ class StepLocationsProposal(nn.Module):
             kernel = recons[:, :, k, :, :].view(P * B, glimpse_side,
                                                 glimpse_side).unsqueeze(1)
             features = F.conv2d(features, kernel, groups=int(P * B))
-            features_side = features.shape[-1]
+            frame_side = features.shape[-1]
             features = F.softmax(features.squeeze(0).view(P, B,
-                                                          features_side ** 2),
+                                                          frame_side ** 2),
                                  dim=-1)
 
             hiddens = self.coordinate_hiddens(features)
