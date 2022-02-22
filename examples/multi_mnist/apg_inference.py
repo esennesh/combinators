@@ -2,6 +2,7 @@
 
 import logging
 import torch
+import torch.nn as nn
 
 from combinators import sampler, signal
 import combinators.inference.resample as resample
@@ -84,6 +85,14 @@ def apg(diagram, num_iterations, use_cuda=True, lr=1e-3, patience=50,
         logging.info('Wake Phi EUBO=%.8e at epoch %d', loss, t + 1)
 
         sampler.clear(graph)
+
+        if t % patience == 0:
+            for box in diagram:
+                if isinstance(box, sampler.ImportanceWiringBox):
+                    theta = nn.utils.parameters_to_vector(box.target)
+                    torch.save(theta, box.name + '_theta_%d.pt' % t)
+                    phi = nn.utils.parameters_to_vector(box.proposal)
+                    torch.save(phi, box.name + '_phi_%d.pt' % t)
 
     if torch.cuda.is_available() and use_cuda:
         for box in diagram:
