@@ -9,13 +9,15 @@ from discopy import cartesian, messages, monoidal, wiring
 from . import lens, signal, utils
 
 class WeightedSampler(torch.nn.Module):
-    def __init__(self, target, batch_shape=(1,)):
+    def __init__(self, target, batch_shape=(1,), particle_shape=(1,)):
         super().__init__()
         sig = inspect.signature(target.forward)
 
         self._batch_shape = batch_shape
+        self._particle_shape = particle_shape
         self._pass_data = 'data' in sig.parameters
         self._pass_batch_shape = 'batch_shape' in sig.parameters
+        self._pass_particle_shape = 'particle_shape' in sig.parameters
 
         self.add_module('target', target)
 
@@ -24,13 +26,17 @@ class WeightedSampler(torch.nn.Module):
         return self._batch_shape
 
     @property
+    def particle_shape(self):
+        return self._particle_shape
+
+    @property
     def pass_data(self):
         return self._pass_data
 
     def expand_args(self, *args, **kwargs):
-        args = tuple(utils.batch_expand(arg, self.batch_shape, True)
+        args = tuple(utils.particle_expand(arg, self.particle_shape, True)
                      if hasattr(arg, 'expand') else arg for arg in args)
-        kwargs = {k: utils.batch_expand(v, self.batch_shape, True)
+        kwargs = {k: utils.particle_expand(v, self.particle_shape, True)
                      if hasattr(v, 'expand') else v for k, v in kwargs.items()}
         return args, kwargs
 
@@ -40,6 +46,8 @@ class WeightedSampler(torch.nn.Module):
             args = args[:-1]
         if self._pass_batch_shape:
             kwargs['batch_shape'] = self.batch_shape
+        if self._pass_particle_shape:
+            kwargs['particle_shape'] = self.particle_shape
         if not self._pass_data and 'data' in kwargs:
             del kwargs['data']
 
@@ -48,10 +56,10 @@ class WeightedSampler(torch.nn.Module):
         p = probtorch.NestedTrace(q=q)
         result = self.target(p, *args, **kwargs)
 
-        dims = tuple(range(len(self.batch_shape)))
+        dims = tuple(range(len(self.particle_shape)))
         log_weight = p.log_proper_weight(sample_dims=dims)
         if torch.is_tensor(log_weight):
-            assert log_weight.shape == self.batch_shape
+            assert log_weight.shape == self.particle_shape
 
         return cartesian.tuplify(result), p, log_weight
 
@@ -212,7 +220,8 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
         return signal.Signal(len(self.dom.upper), self.feedback,
                              partial(self.replay, wires)).split()
 
-def importance_box(name, target, batch_shape, proposal, dom, cod, data={}):
+def importance_box(name, target, proposal, batch_shape, particle_shape, dom,
+                   cod, data={}):
     if not isinstance(dom, lens.Ty):
         dom = dom & monoidal.PRO(len(dom))
     assert len(dom.upper) == len(dom.lower)
@@ -220,7 +229,7 @@ def importance_box(name, target, batch_shape, proposal, dom, cod, data={}):
         cod = cod & monoidal.PRO(len(cod))
     assert len(cod.upper) == len(cod.lower)
 
-    target = WeightedSampler(target, batch_shape)
+    target = WeightedSampler(target, batch_shape, particle_shape)
     return ImportanceBox(name, dom, cod, target, proposal, data=data)
 
 @lru_cache(maxsize=None)
