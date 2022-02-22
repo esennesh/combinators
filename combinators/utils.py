@@ -122,9 +122,19 @@ def normalize_weights(log_weights):
 
 def unique_shape(tensor, shape):
     for i, dim in enumerate(tensor.shape):
-        if i >= len(shape) or (dim != 1 and shape[i] != dim):
+        if i >= len(shape) or dim != shape[i]:
             return tensor.shape[i:]
     return ()
+
+def unique_dim(shapex, shapey):
+    for i, (x, y) in enumerate(zip(shapex, shapey)):
+        if x != y:
+            return i
+    if len(shapex) < len(shapey):
+        return len(shapex)
+    if len(shapey) < len(shapex):
+        return len(shapey)
+    return None
 
 def batch_log_sum_exp(tensor):
     batch_tensor, _ = batch_collapse(tensor, tensor.shape)
