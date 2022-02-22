@@ -104,8 +104,8 @@ def reused_variable(px, py, k):
 def gumbel_max_resample(log_weights):
     particle_logs, _ = batch_collapse(log_weights, log_weights.shape)
     ancestors = gumbel_max_categorical(particle_logs, particle_logs.shape)
-    log_marginal = batch_expand(log_mean_exp(particle_logs, dim=0),
-                                log_weights.shape)
+    log_marginal = particle_expand(log_mean_exp(particle_logs, dim=0),
+                                   log_weights.shape)
     return ancestors, log_marginal
 
 def gumbel_max_categorical(log_probs, sample_shape):
@@ -256,7 +256,7 @@ def plot_evidence_bounds(bounds, lower=True, figsize=(10, 10), scale='linear'):
 
     plt.show()
 
-def batch_expand(tensor, shape, check=False):
+def particle_expand(tensor, shape, check=False):
     if not shape or (check and not unique_shape(tensor, shape)):
         return tensor
     return tensor.expand(*shape, *unique_shape(tensor, shape))
