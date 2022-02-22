@@ -86,8 +86,8 @@ class SystematicResampler(Resampler):
                     torch.rand(1, device=weights.device)
         positions = positions / K
 
-        indices = torch.zeros(K, device=weights.device, dtype=torch.int)
-        cumulative_sum = torch.cumsum(weights)
+        indices = torch.zeros(K, device=weights.device, dtype=torch.long)
+        cumulative_sum = torch.cumsum(weights, dim=0)
         i, j = 0, 0
         while i < K:
             if positions[i] < cumulative_sum[j]:
