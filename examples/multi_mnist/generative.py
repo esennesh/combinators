@@ -40,16 +40,17 @@ class StepObjects(nn.Module):
         self.obj_avg = nn.Sequential(
             nn.Linear(what_dim, hidden_dim // 2), nn.ReLU(),
             nn.Linear(hidden_dim // 2, hidden_dim), nn.ReLU(),
-            nn.Linear(hidden_dim, self.spatial_transformer.img_side ** 2)
+            nn.Linear(hidden_dim, self.spatial_transformer.glimpse_side ** 2)
         )
 
         self.register_buffer('where_t_scale', torch.ones(where_dim) * 0.2)
 
     def predict_obj_mean(self, whats):
-        P, B, K, _ = whats.shape
-        obj_avgs = self.obj_avg(whats).view(P, B, K,
-                                            self.spatial_transformer.img_side,
-                                            self.spatial_transformer.img_side)
+        B, P, K, _ = whats.shape
+        obj_avgs = self.obj_avg(whats).view(
+            B, P, K, self.spatial_transformer.glimpse_side,
+            self.spatial_transformer.glimpse_side
+        )
         return obj_avgs.detach()
 
     def reconstruct(self, obj_avgs, wheres):
@@ -59,14 +60,15 @@ class StepObjects(nn.Module):
                            max=1.0)
 
     def forward(self, p, wheres, whats, data=None):
-        P, B, K, _ = whats.shape
-        obj_avgs = self.obj_avg(whats).view(P, B, K,
-                                            self.spatial_transformer.img_side,
-                                            self.spatial_transformer.img_side)
-        p.loss(lambda v, t: 0., obj_avgs, None, name='object_avgs')
+        B, P, K, _ = whats.shape
+        obj_avgs = self.obj_avg(whats).view(
+            B, P, K, self.spatial_transformer.glimpse_side,
+            self.spatial_transformer.glimpse_side
+        )
+        p.loss(lambda v, t: torch.zeros(B, P, device=obj_avgs.device), obj_avgs,
+               None, name='object_avgs')
 
         wheres_t = p.normal(wheres, self.where_t_scale, name='z^{where}')
-        wheres_t = wheres_t.unsqueeze(dim=2)
 
         reconstructions = self.reconstruct(obj_avgs, wheres_t)
         p.bernoulli(reconstructions, name='x', value=data)
