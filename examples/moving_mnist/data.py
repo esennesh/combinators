@@ -15,72 +15,48 @@ from torch.nn.functional import affine_grid, grid_sample
 # this returns the root directory of the repository, so that we can locate the ../root/data/
 PARENT_DIR = git.Repo(os.path.abspath(os.curdir), search_parent_directories=True).git.rev_parse("--show-toplevel")
 
-def setup_data_loader(data, batch_size, train, normalize=False, shuffle=True, data_dir=os.path.os.path.join(PARENT_DIR, "data"), **kwargs):
+def data_loader_indices(train, timesteps, num_digits, frame_size, dv):
+    if train:
+        split = 'train_t={}_d={}_v={}_fs={}'.format(timesteps, num_digits, dv, frame_size) 
+    else:
+        split = 'test_t={}_d={}_v={}_fs={}'.format(timesteps, num_digits, dv, frame_size) 
+    
+    data_paths = []    
+    data_path = os.path.join(PARENT_DIR, "data", 'MovingMNIST', split) 
+    indices = torch.load(os.path.join(data_path, 'loader_indices.pt'))
+    for index in indices:
+        data_paths.append(os.path.join(data_path, '{}.pt'.format(index)))
+    return data_paths
+    
+def setup_data_loader(data_path, batch_size, shuffle=True, **kwargs):
     """
     This method constructs a dataloader for several commonly-used image datasets
     arguments:
-        data: name of the dataset
         data_dir: path of the dataset
         num_shots: if positive integer, it means the number of labeled examples per class
                    if value is -1, it means the full dataset is labeled
         batch_size: batch size 
         train: if True return the training set;if False, return the test set
-        normalize: if True, rescale the pixel values to [-1, 1]
     """
 
-    if data in ['mnist', 'fashionmnist']:
-        img_h, img_w, n_channels = 28, 28, 1
-        transform = transforms.Compose([transforms.ToTensor(),
-                                        transforms.Normalize((0.5,), (0.5,))])
-    elif data == 'movingmnist':
-        img_h, img_w, n_channels = kwargs['frame_size'], kwargs['frame_size'], 1
-        transform = transforms.Compose([transforms.Normalize((0.5,), (0.5,))]) 
-        
-    if not normalize:
-        del transform.transforms[-1]
-
-    if data == 'mnist':
-        dataset = datasets.MNIST(data_dir, train=train, transform=transform, download=True)
-    elif data == 'fashionmnist':
-        dataset = datasets.FashionMNIST(data_dir, train=train, transform=transform, download=True)
-
-    elif data == 'movingmnist':
-        dataset = MovingMNIST(data_dir, timesteps= kwargs['timesteps'], num_digits=kwargs['num_digits'], frame_size=kwargs['frame_size'], dv=kwargs['dv'], train=train, transform=transform, download=True)
+    dataset = MovingMNIST(data_path)
         
     dataloader = DataLoader(dataset=dataset, 
                             batch_size=batch_size,
                             shuffle=shuffle, 
                             drop_last=True)
     
-    return dataloader, img_h, img_w, n_channels
+    return dataloader
 
 
 class MovingMNIST(VisionDataset):
     """
     simulate multi mnist using the training dataset in mnist
     """
-    def __init__(self, root, timesteps, num_digits, frame_size, dv, train, transform=None, target_transform=None, download=True):
-        super(MovingMNIST, self).__init__(root, transform=transform, target_transform=target_transform)
-        self.timesteps = timesteps
-        self.num_digits = num_digits
-        self.frame_size = frame_size
-        self.dv = dv
-        self.mnist_size = 28 ## by default
-        self.files = {'train': 'train_t={}_d={}_v={}_fs={}.pt'.format(self.timesteps, self.num_digits, self.dv, self.frame_size), 
-                      'test': 'test_t={}_d={}_v={}_fs={}.pt'.format(self.timesteps, self.num_digits, self.dv, self.frame_size), 
-                      }
-    
-        if download:
-            self.download()
+    def __init__(self, data_path, transform=None):
+        super(MovingMNIST, self).__init__(data_path, transform=transform)
 
-        if not self._check_exists():
-            raise RuntimeError('Dataset not found.' +
-                               ' You can use download=True to download it')
-        if train:
-            filepath = os.path.join(self.data_path, self.files['train'])
-        else:
-            filepath = os.path.join(self.data_path, self.files['test'])
-        self.data = torch.load(filepath)
+        self.data = torch.load(data_path)
         
     def __getitem__(self, index):
         img = self.data[index]
@@ -90,14 +66,24 @@ class MovingMNIST(VisionDataset):
 
     def __len__(self):
         return len(self.data)
-    
-    @property
-    def data_path(self):
-        return os.path.join(self.root, self.__class__.__name__)
 
-    def download(self):
-        if self._check_exists():
-            return
+class Sim_MovingMNIST():
+    """
+    simulate multi mnist using the mnist
+    """
+    def __init__(self, timesteps, num_digits, frame_size, dv, root=os.path.os.path.join(PARENT_DIR, "data"), transform=None, target_transform=None, download=True, chunksize=1000):
+        super(Sim_MovingMNIST, self).__init__()
+        self.timesteps = timesteps
+        self.num_digits = num_digits
+        self.frame_size = frame_size
+        self.dv = dv
+        self.mnist_size = 28 ## by default
+        self.chunksize = chunksize
+        self.root = root
+        self.data_path = os.path.join(self.root, 'MovingMNIST')
+        self.files = {'train': 'train_t={}_d={}_v={}_fs={}'.format(self.timesteps, self.num_digits, self.dv, self.frame_size), 
+                      'test': 'test_t={}_d={}_v={}_fs={}'.format(self.timesteps, self.num_digits, self.dv, self.frame_size), 
+                      }
         # generate datasets if not exist
         dataset_mnist_train = datasets.MNIST(self.root, train=True, transform=transforms.ToTensor(), download=True)
         dataset_mnist_test = datasets.MNIST(self.root, train=False, transform=transforms.ToTensor(), download=True)
@@ -105,14 +91,13 @@ class MovingMNIST(VisionDataset):
         if not os.path.exists(self.data_path):
             os.makedirs(self.data_path)
             
-        self.generate_movingmnist(dataset_mnist_train, os.path.join(self.data_path, self.files['train']))
-        self.generate_movingmnist(dataset_mnist_test, os.path.join(self.data_path, self.files['test']))    
-            
-    def _check_exists(self):
-        for k, v in self.files.items():
+        for k, v in self.files.items(): 
             if not os.path.exists(os.path.join(self.data_path, v)):
-                return False
-        return True
+                os.makedirs(os.path.join(self.data_path, v))
+                
+                
+        self.generate_movingmnist(dataset_mnist_train, 'train')
+        self.generate_movingmnist(dataset_mnist_test, 'test')    
     
     def sim_trajectory(self, init_xs):
         ''' Generate a random sequence of a MNIST digit '''
@@ -161,16 +146,21 @@ class MovingMNIST(VisionDataset):
         return torch.cat(Xs, 0), torch.cat(Vs, 0)
     
 
-    def generate_movingmnist(self, dataset_mnist, output_path):
+    def generate_movingmnist(self, dataset_mnist, split):
         s_factor = self.frame_size / self.mnist_size
         t_factor = (self.frame_size - self.mnist_size) / self.mnist_size
-        
         data_loader = DataLoader(dataset=dataset_mnist, 
                                  batch_size=self.num_digits,
                                  shuffle=True, 
                                  drop_last=True)
         canvases = []
-        for i in tqdm(range(self.num_digits)):
+        indices = []
+        index = 0
+        if split == 'train':
+            iterations = self.num_digits
+        else:
+            iterations = self.num_digits
+        for i in tqdm(range(iterations)):
             for (images, labels) in tqdm(data_loader):
                 canvas = []
                 locations, _ = self.sim_trajectories(num_tjs=self.num_digits)
@@ -182,5 +172,15 @@ class MovingMNIST(VisionDataset):
 
                 canvas = torch.cat(canvas, 1).sum(1).clamp(min=0.0, max=1.0)
                 canvases.append(canvas.unsqueeze(0))
-        canvases = torch.cat(canvases, 0)
-        torch.save(canvases, output_path)
+                if len(canvases) == self.chunksize:
+                    canvases = torch.cat(canvases, 0)
+                    torch.save(canvases, os.path.join(self.data_path, self.files[split], '{}.pt'.format(index)))
+                    indices.append(index)
+                    index += 1
+                    canvases = []
+        if canvases:
+            canvases = torch.cat(canvases, 0)
+            torch.save(canvases, os.path.join(self.data_path, self.files[split], '{}.pt'.format(index)))
+            indices.append(index)
+            
+        torch.save(indices, os.path.join(self.data_path, self.files[split], 'loader_indices.pt'))

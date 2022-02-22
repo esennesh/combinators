@@ -4,6 +4,7 @@ import torch
 import random
 import numpy as np
 from tqdm import tqdm
+from data import data_loader_indices, setup_data_loader, Sim_MovingMNIST
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from affine_transformer import Affine_Transformer
@@ -92,11 +93,12 @@ class Trainer():
     """
     A generic model trainer
     """
-    def __init__(self, models, train_loader, num_epochs, device, exp_name):
+    def __init__(self, models, data_paths, num_epochs, batch_size, device, exp_name):
         super().__init__()
         self.models = models
-        self.train_loader = train_loader
+        self.data_paths = data_paths
         self.num_epochs = num_epochs
+        self.batch_size = batch_size
         self.device = device
         self.exp_name = exp_name
         self.logging_path = os.path.join(PARENT_DIR, "examples/moving_mnist", "logging")
@@ -105,17 +107,20 @@ class Trainer():
         pass
     
     def train(self):
-        pbar = tqdm(range(self.num_epochs))
-        for epoch in pbar:            
-            metric_epoch = self.train_epoch(epoch)
-            pbar.set_postfix(ordered_dict=metric_epoch)
-            self.logging(metric_epoch, epoch)
-            save_models(self.models, self.exp_name)
+        for epoch in tqdm(range(self.num_epochs)):
+            random.shuffle(self.data_paths)
+            pbar = tqdm(range(len(self.data_paths)))
+            for chunk_idx in pbar:
+                train_loader = setup_data_loader(self.data_paths[chunk_idx], self.batch_size, train=True)    
+                metric_epoch = self.train_epoch(epoch, train_loader)
+                pbar.set_postfix(ordered_dict=metric_epoch)
+                self.logging(metric_epoch, epoch, chunk_idx)
+                save_models(self.models, self.exp_name)
         
-    def logging(self, metrics, epoch):
+    def logging(self, metrics, epoch, chunk):
         if not os.path.exists(self.logging_path):
             os.makedirs(self.logging_path)
         fout = open(os.path.join(self.logging_path, self.exp_name + '.txt'), mode='w+' if epoch==0 else 'a+')
         metric_print = ",  ".join(['{:s}={:.2e}'.format(k, v) for k, v in metrics.items()])
-        print("Epoch={:d}, ".format(epoch+1) + metric_print, file=fout)
+        print("Epoch={:d}, Chunk={:d}".format(epoch+1, chunk) + metric_print, file=fout)
         fout.close()
