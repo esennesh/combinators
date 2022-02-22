@@ -71,11 +71,10 @@ class ClustersGibbs(nn.Module):
         return ()
 
 class SampleCluster(nn.Module):
-    def __init__(self, num_clusters, num_samples):
+    def __init__(self, num_clusters):
         super().__init__()
 
         self._num_clusters = num_clusters
-        self._num_samples = num_samples
         self.register_buffer('pi', torch.ones(self._num_clusters))
 
     def forward(self, p, batch_shape=(1,), particle_shape=(1,)):
