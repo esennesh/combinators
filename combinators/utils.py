@@ -295,9 +295,15 @@ def optional_to(tensor, other):
     return tensor
 
 def particle_index(tensor, indices):
+    dim = unique_dim(tensor.shape, indices.shape)
+    common = tensor.shape[:dim]
+    tensor, tensor_unique = batch_collapse(tensor, common)
+    indices, indices_unique = batch_collapse(indices, common)
+
     indexed_tensors = [t[indices[particle]] for particle, t in
                        enumerate(torch.unbind(tensor, 0))]
-    return torch.stack(indexed_tensors, dim=0)
+    indexed_shape = common + indices_unique + tensor_unique[1:]
+    return torch.stack(indexed_tensors, dim=0).reshape(indexed_shape)
 
 def relaxed_categorical(probs, name, this=None):
     if this.training:
