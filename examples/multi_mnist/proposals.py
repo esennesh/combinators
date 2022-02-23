@@ -156,4 +156,5 @@ class StepLocationsProposal(nn.Module):
         q.normal(where_loc, where_scale, value=where, name='z^{where}')
 
     def feedback(self, p, wheres, whats, data=None):
-        return p['z^{where}'].value, p['object_avgs'].value
+        recons = self.spatial_transformer.predict_obj_mean(whats, True)
+        return (p['z^{where}'].value, recons)
