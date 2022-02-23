@@ -7,7 +7,7 @@ from matplotlib.patches import Ellipse
 import matplotlib.pyplot as plt
 import numpy as np
 import probtorch
-from probtorch.util import log_mean_exp, log_sum_exp
+from probtorch.util import log_mean_exp
 import torch
 from torch.distributions import Gumbel
 import torch.nn as nn
@@ -115,10 +115,11 @@ def gumbel_max_categorical(log_probs, sample_shape):
     gumbels = dist.sample(sample_shape)
     return torch.argmax(gumbels + log_probs, dim=-1)
 
-def normalize_weights(log_weights):
-    batch_shape = log_weights.shape
-    log_weights, _ = batch_collapse(log_weights, batch_shape)
-    return softmax(log_weights, dim=0).reshape(*batch_shape)
+def normalize_weights(log_weights, particle_shape=None):
+    if particle_shape is None:
+        particle_shape = log_weights.shape
+    log_weights, unique = batch_collapse(log_weights, particle_shape)
+    return softmax(log_weights, dim=0).reshape(*particle_shape, *unique)
 
 def unique_shape(tensor, shape):
     for i, dim in enumerate(tensor.shape):
@@ -136,13 +137,17 @@ def unique_dim(shapex, shapey):
         return len(shapey)
     return None
 
-def batch_log_sum_exp(tensor):
-    batch_tensor, _ = batch_collapse(tensor, tensor.shape)
-    return log_sum_exp(batch_tensor, dim=0)
+def batch_softmax(tensor, particle_shape=None):
+    if particle_shape is None:
+        particle_shape = tensor.shape
+    batch_tensor, unique = batch_collapse(tensor, particle_shape)
+    return softmax(batch_tensor, dim=0).reshape(*particle_shape, *unique)
 
-def batch_sum(tensor):
-    batch_tensor, _ = batch_collapse(tensor, tensor.shape)
-    return batch_tensor.sum(dim=0)
+def batch_sum(tensor, particle_shape=None):
+    if particle_shape is None:
+        particle_shape = tensor.shape
+    batch_tensor, unique = batch_collapse(tensor, particle_shape)
+    return batch_tensor.sum(dim=0).reshape(*unique)
 
 def batch_mean(tensor, batch_shape=None):
     if not batch_shape:
