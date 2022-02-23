@@ -9,15 +9,15 @@ import torch.nn.functional as F
 
 from .. import lens, sampler, utils
 
-def collapsed_index_select(tensor, batch_shape, ancestors):
-    tensor, unique = utils.batch_collapse(tensor, batch_shape)
+def collapsed_index_select(tensor, particle_shape, ancestors):
+    tensor, unique = utils.batch_collapse(tensor, particle_shape)
     tensor = tensor.index_select(0, ancestors)
-    return tensor.reshape(batch_shape + unique)
+    return tensor.reshape(particle_shape + unique)
 
-def index_select_rv(rv, batch_shape, ancestors):
+def index_select_rv(rv, particle_shape, ancestors):
     result = rv
     if isinstance(rv, RandomVariable) and not rv.observed:
-        value = collapsed_index_select(rv.value, batch_shape, ancestors)
+        value = collapsed_index_select(rv.value, particle_shape, ancestors)
         result = RandomVariable(rv.Dist, value, *rv.dist_args,
                                 provenance=rv.provenance, mask=rv.mask,
                                 **rv.dist_kwargs)
@@ -36,45 +36,48 @@ class Resampler:
         pass
 
     @staticmethod
-    def resample_box(box, ancestors, batch_shape):
+    def resample_box(box, ancestors, particle_shape):
         (args, kwargs), (results, p, lw) = box.peek()
         args, results = list(args), list(results)
         for i, arg in enumerate(args):
             if torch.is_tensor(arg):
-                args[i] = collapsed_index_select(arg, batch_shape,
+                args[i] = collapsed_index_select(arg, particle_shape,
                                                  ancestors)
         for k, v in kwargs.items():
             if k != 'data' and torch.is_tensor(v):
-                kwargs[k] = collapsed_index_select(v, batch_shape,
+                kwargs[k] = collapsed_index_select(v, particle_shape,
                                                    ancestors)
         for i, result in enumerate(results):
             if torch.is_tensor(result):
-                results[i] = collapsed_index_select(result, batch_shape,
+                results[i] = collapsed_index_select(result, particle_shape,
                                                     ancestors)
 
-        index = lambda rv: index_select_rv(rv, batch_shape, ancestors)
+        index = lambda rv: index_select_rv(rv, particle_shape, ancestors)
         p = utils.trace_map(p, index)
         if torch.is_tensor(lw):
-            lw = utils.batch_mean(lw, batch_shape).expand(*batch_shape)
+            lw = utils.batch_mean(lw, particle_shape).expand(*particle_shape)
 
         box.cache[(args, kwargs)] = (results, p, lw)
 
-    def resample_diagram(self, *vals):
+    def resample_diagram(self, *args, **kwargs):
         _, log_weight = sampler.trace(self.diagram)
         if not torch.is_tensor(log_weight) or (log_weight == 0.).all():
-            return vals
+            return args, kwargs
         ancestors = self.ancestor_indices(log_weight)
-        batch_shape = log_weight.shape
+        particle_shape = log_weight.shape
 
         for box in self.diagram:
             if isinstance(box, sampler.ImportanceWiringBox) and box.cache:
-                self.resample_box(box, ancestors, batch_shape)
+                self.resample_box(box, ancestors, particle_shape)
 
-        vals = list(vals)
-        for i, val in enumerate(vals):
+        args = list(args)
+        for i, val in enumerate(args):
             if torch.is_tensor(val):
-                vals[i] = collapsed_index_select(val, batch_shape, ancestors)
-        return tuple(vals)
+                args[i] = collapsed_index_select(val, particle_shape, ancestors)
+        for k, v in kwargs.items():
+            if torch.is_tensor(v):
+                kwargs[k] = collapsed_index_select(v, particle_shape, ancestors)
+        return tuple(args)
 
 class SystematicResampler(Resampler):
     def ancestor_indices(self, log_weight):
