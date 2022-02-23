@@ -140,7 +140,7 @@ class StepLocationsProposal(nn.Module):
             locs.append(where_loc)
             scales.append(where_scale)
 
-            where = dist.Normal(where_loc, where_scale).rsample()
+            where = dist.Normal(where_loc, where_scale).sample()
             q_wheres.append(where)
 
             reconstruction = self.spatial_transformer.glimpse2image(
