@@ -190,8 +190,8 @@ class StepBallProposal(nn.Module):
                 next_pos, data={}):
         velocity_stats = self.direction_gibbs(torch.cat(
             (prev_dir, prev_pos, next_dir, next_pos, uncertainty, noise),
-            dim=1,
-        )).view(-1, 2, 2)
+            dim=2,
+        )).view(-1, noise.shape[1], 2, 2)
         velocity_loc = velocity_stats[:, :, 0]
         velocity_scale = softplus(velocity_stats[:, :, 1])
         q.normal(loc=velocity_loc, scale=velocity_scale, name='velocity')
@@ -199,6 +199,6 @@ class StepBallProposal(nn.Module):
     def feedback(self, p, prev_dir, prev_pos, uncertainty, noise, data={}):
         stats = self.direction_feedback(torch.cat(
             (p['velocity'].value, p['position'].value, uncertainty, noise),
-            dim=1,
-        )).view(-1, 2, 4)
+            dim=2,
+        )).view(-1, noise.shape[1], 2, 4)
         return torch.unbind(stats, dim=-1)
