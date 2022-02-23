@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from functools import wraps
 import itertools
 
 from discopy import cartesian, messages, monoidal
@@ -38,8 +39,10 @@ class Signal:
 
     def __getitem__(self, key):
         if isinstance(key, int):
+            @wraps(self._function)
             def index_signal():
                 return self._function()[key]
+            @wraps(self._update)
             def index_update(val):
                 args = [None for _ in range(self.dom)]
                 args[key] = val
