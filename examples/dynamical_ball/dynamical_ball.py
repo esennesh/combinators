@@ -79,15 +79,15 @@ class InitialBallState(nn.Module):
         self.register_parameter('position_0__scale',
                                 nn.Parameter(torch.ones(2)))
 
-    def forward(self, p, batch_shape=(1,)):
-        loc = self.velocity_0__loc.expand(*batch_shape, 2)
-        scale = self.velocity_0__scale.expand(*batch_shape, 2)
+    def forward(self, p, batch_shape=(1,), particle_shape=(1,)):
+        loc = self.velocity_0__loc.expand(*particle_shape, *batch_shape, 2)
+        scale = self.velocity_0__scale.expand(*particle_shape, *batch_shape, 2)
         direction = p.normal(loc, scale, name='velocity_0')
-        speed = torch.sqrt(torch.sum(direction**2, dim=1))
+        speed = torch.sqrt(torch.sum(direction**2, dim=2))
         direction = direction / speed.unsqueeze(-1).expand(*direction.shape)
 
-        loc = self.position_0__loc.expand(*batch_shape, 2)
-        scale = self.position_0__scale.expand(*batch_shape, 2)
+        loc = self.position_0__loc.expand(*particle_shape, *batch_shape, 2)
+        scale = self.position_0__scale.expand(*particle_shape, *batch_shape, 2)
         position = p.normal(loc, scale, name='position_0')
 
         return direction, position
