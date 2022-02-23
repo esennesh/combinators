@@ -7,10 +7,12 @@ import torch.nn.functional as F
 
 from .. import lens, sampler, signal, utils
 
-def elbo(log_weight, iwae=False):
+def elbo(log_weight, particle_shape=(1,), iwae=False):
     if iwae:
-        return utils.batch_marginalize(log_weight)
-    return utils.batch_mean(log_weight)
+        l = utils.batch_marginalize(log_weight, particle_shape)
+    else:
+        l = utils.batch_mean(log_weight, particle_shape)
+    return l.mean()
 
 def eubo(log_weight, iwae=False):
     probs = utils.normalize_weights(log_weight).detach()
