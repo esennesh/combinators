@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class SpatialTransformer(nn.Module):
-    def __init__(self, img_side, glimpse_side):
+    def __init__(self, img_side, glimpse_side, what_dim, hidden_dim):
         super().__init__()
 
         self._glimpse_side = glimpse_side
@@ -21,6 +21,12 @@ class SpatialTransformer(nn.Module):
         scale = self._glimpse_side / self._img_side
         self.register_buffer('img_to_glimpse_scale', torch.eye(2) * scale)
 
+        self.obj_avg = nn.Sequential(
+            nn.Linear(what_dim, hidden_dim // 2), nn.ReLU(),
+            nn.Linear(hidden_dim // 2, hidden_dim), nn.ReLU(),
+            nn.Linear(hidden_dim, self.glimpse_side ** 2)
+        )
+
     @property
     def glimpse_side(self):
         return self._glimpse_side
@@ -28,6 +34,18 @@ class SpatialTransformer(nn.Module):
     @property
     def img_side(self):
         return self._img_side
+
+    def predict_obj_mean(self, whats, detach=True):
+        P, B, K, _ = whats.shape
+        obj_avgs = self.obj_avg(whats).view(P, B, K, self.glimpse_side,
+                                            self.glimpse_side)
+        if detach:
+            obj_avgs = obj_avgs.detach()
+        return obj_avgs
+
+    def reconstruct(self, obj_avgs, wheres):
+        reconstructions = self.glimpse2image(obj_avgs, wheres)
+        return torch.clamp(reconstructions.sum(dim=2), min=0.0, max=1.0)
 
     def glimpse2image(self, glimpse, where):
         B, P, K, _ = where.shape
