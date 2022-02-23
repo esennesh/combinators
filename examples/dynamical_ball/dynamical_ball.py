@@ -114,14 +114,12 @@ class InitBallProposal(nn.Module):
         if len(position.shape) < 3:
             position = position.unsqueeze(1)
 
-        vel_stats = self.velocity_gibbs(torch.cat(
-            (direction.mean(dim=1), direction.std(dim=1, unbiased=False)), dim=1
-        )).view(-1, 2, 2).unbind(dim=1)
+        vel_stats = self.velocity_gibbs(torch.cat((direction, position), dim=2))
+        vel_stats = vel_stats.view(-1, direction.shape[1], 2, 2).unbind(dim=2)
         q.normal(vel_stats[0], softplus(vel_stats[1]), name='velocity_0')
 
-        pos_stats = self.position_gibbs(torch.cat(
-            (position.mean(dim=1), position.std(dim=1, unbiased=False)), dim=1
-        )).view(-1, 2, 2).unbind(dim=1)
+        pos_stats = self.position_gibbs(torch.cat((position, direction), dim=2))
+        pos_stats = pos_stats.view(-1, direction.shape[1], 2, 2).unbind(dim=2)
         q.normal(pos_stats[0], softplus(pos_stats[1]), name='position_0')
 
     def feedback(self, p, *args, data={}):
