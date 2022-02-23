@@ -127,16 +127,16 @@ class InitBallProposal(nn.Module):
 
 def reflect_on_boundary(position, direction, boundary, d=0, positive=True):
     sign = 1.0 if positive else -1.0
-    overage = position[:, d] - sign * boundary
+    overage = position[:, :, d] - sign * boundary
     overage = torch.where(torch.sign(overage) == sign, overage,
                           torch.zeros(*overage.shape, device=position.device))
-    position = list(torch.unbind(position, 1))
+    position = list(torch.unbind(position, dim=2))
     position[d] = position[d] - 2 * overage
-    position = torch.stack(position, dim=1)
+    position = torch.stack(position, dim=2)
 
-    direction = list(torch.unbind(direction, 1))
+    direction = list(torch.unbind(direction, dim=2))
     direction[d] = torch.where(overage != 0.0, -direction[d], direction[d])
-    direction = torch.stack(direction, dim=1)
+    direction = torch.stack(direction, dim=2)
     return position, direction
 
 def simulate_step(position, velocity):
