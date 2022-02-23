@@ -182,6 +182,8 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
             kwargs = {**data, **kwargs}
         dims = tuple(range(len(self._target.particle_shape)))
         fwd = args[:len(self.dom.upper)]
+        if len(fwd) != len(self.dom.upper):
+            raise TypeError(messages.expected_input_length(self, fwd))
         cached_fwd = (None, *fwd)
 
         # Retrieve the stored target trace from the cache, initializing by
@@ -191,6 +193,8 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
 
         # Retrieve the feedback corresponding to the stored target trace
         wires = args[len(self.dom.upper):]
+        if len(wires) != len(self.cod.lower):
+            raise TypeError(messages.expected_input_length(self, wires))
         feedback = ()
         for w in wires:
             feedback = feedback + w()
@@ -217,7 +221,7 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
             w.update(r)
 
         # Return the feedback corresponding to the new target trace
-        return signal.Signal(len(self.dom.upper), self.feedback,
+        return signal.Signal(len(self.dom.lower), self.feedback,
                              partial(self.replay, wires)).split()
 
 def importance_box(name, target, proposal, batch_shape, particle_shape, dom,
