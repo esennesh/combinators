@@ -94,11 +94,13 @@ class InitialLocationsProposal(nn.Module):
         return ()
 
 class StepLocationsProposal(nn.Module):
-    def __init__(self, spatial_transform, frame_side, hidden_dim, where_dim):
+    def __init__(self, spatial_transform, img_side, glimpse_side, hidden_dim,
+                 where_dim):
         super().__init__()
         self.spatial_transformer = spatial_transform
-        self._frame_side = frame_side
+        self._img_side = img_side
 
+        frame_side = img_side - glimpse_side + 1
         self.coordinate_hiddens = nn.Sequential(
             nn.Linear(frame_side ** 2, hidden_dim), nn.ReLU()
         )
