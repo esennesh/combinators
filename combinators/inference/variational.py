@@ -20,7 +20,7 @@ def eubo(log_weight, particle_shape=(1,), iwae=False):
     if iwae:
         l = utils.batch_softmax(particles, particle_shape)
     else:
-        l = utils.batch_sum(eubo, particle_shape)
+        l = utils.batch_sum(particles, particle_shape)
     return l.mean()
 
 def infer(diagram, num_iterations, objective=elbo, use_cuda=True, lr=1e-3,
