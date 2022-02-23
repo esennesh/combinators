@@ -299,7 +299,8 @@ def _posthook_method(method, h):
     @wraps(method)
     def m(*args, **kwargs):
         vals = method(*args, **kwargs)
-        return h(*vals)
+        vals, _ = h(*vals)
+        return vals
     m.__self__ = method.__self__
     return m
 
