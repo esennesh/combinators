@@ -14,12 +14,14 @@ def elbo(log_weight, particle_shape=(1,), iwae=False):
         l = utils.batch_mean(log_weight, particle_shape)
     return l.mean()
 
-def eubo(log_weight, iwae=False):
-    probs = utils.normalize_weights(log_weight).detach()
+def eubo(log_weight, particle_shape=(1,), iwae=False):
+    probs = utils.normalize_weights(log_weight, particle_shape).detach()
     particles = probs * log_weight
     if iwae:
-        return utils.log_sum_exp(particles)
-    return utils.batch_sum(eubo)
+        l = utils.batch_softmax(particles, particle_shape)
+    else:
+        l = utils.batch_sum(eubo, particle_shape)
+    return l.mean()
 
 def infer(diagram, num_iterations, objective=elbo, use_cuda=True, lr=1e-3,
           patience=50, particle_shape=(1,)):
