@@ -3,8 +3,10 @@
 import logging
 import torch
 import torch.nn as nn
+import tqdm
 
 from combinators import sampler, signal
+import combinators.inference.conditioning as conditioning
 import combinators.inference.resample as resample
 import combinators.inference.variational as variational
 
@@ -44,8 +46,8 @@ def hooks_apg(graph, particle_shape):
     variational.hook_variational(graph, losses, method='put', when='post')
     return losses
 
-def apg(diagram, num_iterations, particle_shape, use_cuda=True, lr=1e-3,
-        patience=50, num_sweeps=6):
+def apg(diagram, num_iterations, particle_shape, data_loaders, use_cuda=True,
+        lr=1e-3, patience=50, num_sweeps=6):
     for box in diagram:
         if isinstance(box, sampler.ImportanceWiringBox):
             box.target.train()
@@ -70,24 +72,29 @@ def apg(diagram, num_iterations, particle_shape, use_cuda=True, lr=1e-3,
 
     objectives = torch.zeros(num_iterations, 2, requires_grad=False)
     for t in range(num_iterations):
-        optimizer.zero_grad()
+        for _, loader in data_loaders:
+            for series in loader:
+                conditioning.sequential(graph, step_where=series.unbind(dim=1))
 
-        filtering()
-        for _ in range(num_sweeps):
-            smoothing()
+                optimizer.zero_grad()
 
-        loss = losses.loss
-        loss.backward()
-        optimizer.step()
-        scheduler.step(loss)
+                filtering()
+                for _ in range(num_sweeps):
+                    smoothing()
 
-        objectives[t, 0] = torch.stack(losses.elbos, dim=-1).detach()
+                loss = losses.loss
+                loss.backward()
+                optimizer.step()
+                scheduler.step(loss)
+
+                objectives[t, 0] += torch.stack(losses.elbos, dim=-1).detach()
+                objectives[t, 1] += torch.stack(losses.eubos, dim=-1).detach()
+
+                sampler.clear(graph)
+
         logging.info('Wake Theta IWAE free-energy=%.8e at epoch %d', loss,
                      t + 1)
-        objectives[t, 1] = torch.stack(losses.eubos, dim=-1).detach()
         logging.info('Wake Phi EUBO=%.8e at epoch %d', loss, t + 1)
-
-        sampler.clear(graph)
 
         if t % patience == 0:
             for box in diagram:
