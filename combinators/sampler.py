@@ -57,9 +57,10 @@ class WeightedSampler(torch.nn.Module):
         result = self.target(p, *args, **kwargs)
 
         dims = tuple(range(len(self.particle_shape)))
-        log_weight = p.log_proper_weight(sample_dims=dims)
+        log_weight = p.log_proper_weight(sample_dims=dims,
+                                         batch_dim=len(self.particle_shape))
         if torch.is_tensor(log_weight):
-            assert log_weight.shape == self.particle_shape
+            assert log_weight.shape == (self.particle_shape + self.batch_shape)
 
         return cartesian.tuplify(result), p, log_weight
 
