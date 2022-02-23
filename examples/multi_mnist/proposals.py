@@ -157,4 +157,4 @@ class StepLocationsProposal(nn.Module):
 
     def feedback(self, p, wheres, whats, data=None):
         recons = self.spatial_transformer.predict_obj_mean(whats, True)
-        return (p['z^{where}'].value, recons)
+        return (recons, p['z^{where}'].value)
