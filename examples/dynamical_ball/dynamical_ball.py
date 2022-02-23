@@ -20,13 +20,13 @@ class InitBallDynamics(nn.Module):
         self.register_parameter('noise__loc', nn.Parameter(torch.ones(2)))
         self.register_parameter('noise__scale', nn.Parameter(torch.ones(2)))
 
-    def forward(self, p, batch_shape=(1,)):
-        loc = self.uncertainty__loc.expand(*batch_shape, 2)
-        scale = self.uncertainty__scale.expand(*batch_shape, 2)
+    def forward(self, p, batch_shape=(1,), particle_shape=(1,)):
+        loc = self.uncertainty__loc.expand(*particle_shape, *batch_shape, 2)
+        scale = self.uncertainty__scale.expand(*particle_shape, *batch_shape, 2)
         uncertainty = softplus(p.normal(loc, scale, name='uncertainty'))
 
-        loc = self.noise__loc.expand(*batch_shape, 2)
-        scale = self.noise__scale.expand(*batch_shape, 2)
+        loc = self.noise__loc.expand(*particle_shape, *batch_shape, 2)
+        scale = self.noise__scale.expand(*particle_shape, *batch_shape, 2)
         noise = softplus(p.normal(loc, scale, name='noise'))
         return uncertainty, noise
 
