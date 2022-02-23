@@ -109,7 +109,8 @@ class StepLocationsProposal(nn.Module):
             nn.Linear(hidden_dim // 2, where_dim)
         )
 
-    def forward(self, q, wheres, whats, recons, data=None):
+    def forward(self, q, wheres, whats, wheres_fb, data=None):
+        recons = self.spatial_transformer.predict_obj_mean(whats, True)
         _, _, K, glimpse_side, _ = recons.shape
         P, B, _, img_side, _ = data.shape
 
