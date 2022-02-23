@@ -101,11 +101,11 @@ class Copy(lens.Copy):
             y = cartesian.untuplify(*sy(*arg))
             if torch.is_tensor(x) and torch.is_tensor(y):
                 if len(x.shape) == len(y.shape):
-                    return torch.stack((x, y), dim=1)
+                    return torch.stack((x, y), dim=2)
                 if len(x.shape) < len(y.shape):
-                    return torch.cat((x.unsqueeze(1), y), dim=1)
+                    return torch.cat((x.unsqueeze(2), y), dim=2)
                 if len(y.shape) < len(x.shape):
-                    return torch.cat((x, y.unsqueeze(1)), dim=1)
+                    return torch.cat((x, y.unsqueeze(2)), dim=2)
             return (x, y)
         def sig_update(*arg):
             sx.update(*arg)
