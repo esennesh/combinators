@@ -91,9 +91,9 @@ class VariationalLoss:
     def objective(self):
         pass
 
-    def accumulate(self, *vals):
+    def accumulate(self, *args, **kwargs):
         self._loss = self._loss + self.objective()
-        return vals
+        return args, kwargs
 
 def hook_variational(graph, variational, method='put', when='post'):
     for box in graph:
