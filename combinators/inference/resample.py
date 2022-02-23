@@ -57,6 +57,7 @@ class Resampler:
         if torch.is_tensor(lw):
             lw = utils.batch_mean(lw, particle_shape).expand(*ancestors.shape)
 
+        args, results = tuple(args), tuple(results)
         box.cache[(args, kwargs)] = (results, p, lw)
 
     def resample_diagram(self, *args, **kwargs):
