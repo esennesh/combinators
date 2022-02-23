@@ -150,8 +150,10 @@ def batch_mean(tensor, batch_shape=None):
     batch_tensor, _ = batch_collapse(tensor, batch_shape)
     return batch_tensor.mean(dim=0)
 
-def batch_marginalize(tensor):
-    batch_tensor, _ = batch_collapse(tensor, tensor.shape)
+def batch_marginalize(tensor, batch_shape=None):
+    if not batch_shape:
+        batch_shape = tensor.shape
+    batch_tensor, _ = batch_collapse(tensor, batch_shape)
     return log_mean_exp(batch_tensor, dim=0)
 
 def batch_collapse(tensor, shape):
