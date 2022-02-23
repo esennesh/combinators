@@ -22,7 +22,7 @@ def eubo(log_weight, iwae=False):
     return utils.batch_sum(eubo)
 
 def infer(diagram, num_iterations, objective=elbo, use_cuda=True, lr=1e-3,
-          patience=50):
+          patience=50, particle_shape=(1,)):
     for box in diagram:
         if isinstance(box, sampler.ImportanceWiringBox):
             box.target.train()
@@ -51,7 +51,7 @@ def infer(diagram, num_iterations, objective=elbo, use_cuda=True, lr=1e-3,
         smoothing()
 
         _, log_weight = sampler.trace(graph)
-        loss = objective(log_weight)
+        loss = objective(log_weight, particle_shape=particle_shape)
 
         (-loss).backward()
         optimizer.step()
