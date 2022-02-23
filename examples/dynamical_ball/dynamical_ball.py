@@ -149,15 +149,15 @@ def simulate_step(position, velocity):
     return proposal, velocity
 
 def simulate_trajectory(position, velocity, num_steps, velocities=None):
-    trajectory = torch.zeros(position.shape[0], num_steps + 1, 2, 2)
-    trajectory[:, 0, 0] = position
-    trajectory[:, 0, 1] = velocity
+    trajectory = torch.zeros(*position.shape[:2], num_steps + 1, 2, 2)
+    trajectory[:, :, 0, 0] = position
+    trajectory[:, :, 0, 1] = velocity
     for t in range(1, num_steps + 1):
         if velocities is not None:
-            velocity = velocities[:, t-1]
+            velocity = velocities[:, :, t-1]
         position, velocity = simulate_step(position, velocity)
-        trajectory[:, t, 0] = position
-        trajectory[:, t, 1] = velocity
+        trajectory[:, :, t, 0] = position
+        trajectory[:, :, t, 1] = velocity
     return trajectory
 
 class StepBallState(nn.Module):
