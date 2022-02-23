@@ -57,8 +57,7 @@ class WeightedSampler(torch.nn.Module):
         result = self.target(p, *args, **kwargs)
 
         dims = tuple(range(len(self.particle_shape)))
-        log_weight = p.log_proper_weight(sample_dims=dims,
-                                         batch_dim=len(self.particle_shape))
+        log_weight = p.log_proper_weight(sample_dims=dims, batch_dim=len(dims))
         if torch.is_tensor(log_weight):
             assert log_weight.shape == (self.particle_shape + self.batch_shape)
 
@@ -181,14 +180,14 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
         if self._target.pass_data:
             _, data = self._target.expand_args((), **self.data)
             kwargs = {**data, **kwargs}
-        dims = tuple(range(len(self._target.batch_shape)))
+        dims = tuple(range(len(self._target.particle_shape)))
         fwd = args[:len(self.dom.upper)]
         cached_fwd = (None, *fwd)
 
         # Retrieve the stored target trace from the cache, initializing by
         # filtering if necessary.
         _, p, log_v = self._cache(*cached_fwd, **kwargs)
-        log_orig = p.log_joint(sample_dims=dims)
+        log_orig = p.log_joint(sample_dims=dims, batch_dim=len(dims))
 
         # Retrieve the feedback corresponding to the stored target trace
         wires = args[len(self.dom.upper):]
@@ -199,16 +198,16 @@ class ImportanceWiringBox(lens.CartesianWiringBox):
         # Rescore the original trace under the proposal kernel
         q = probtorch.NestedTrace(q=p)
         self._proposal.forward(q, *fwd, *feedback, **kwargs)
-        log_rk = q.log_joint(sample_dims=dims)
+        log_rk = q.log_joint(sample_dims=dims, batch_dim=len(dims))
 
         # Draw the new trace and the feedback from the proposal kernel
         q = probtorch.Trace()
         self._proposal.forward(q, *fwd, *feedback, **kwargs)
-        log_fk = q.log_joint(sample_dims=dims)
+        log_fk = q.log_joint(sample_dims=dims, batch_dim=len(dims))
 
         # Score the new trace under the target program
         result, p, _ = self._target.forward(q, *fwd, **kwargs)
-        log_update = p.log_joint(sample_dims=dims)
+        log_update = p.log_joint(sample_dims=dims, batch_dim=len(dims))
 
         log_v = log_v + (log_update + log_rk) - (log_orig + log_fk)
         self._cache[(cached_fwd, kwargs)] = (result, p, log_v)
