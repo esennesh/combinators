@@ -80,13 +80,13 @@ class InitialLocationsProposal(nn.Module):
 
             reconstruction = self.spatial_transformer.glimpse2image(
                 recons[:, :, k, :, :].unsqueeze(dim=2),
-                where.unsqueeze(dim=2).unsqueeze(dim=2)
-            ).squeeze(dim=2).squeeze(dim=2)
+                where.unsqueeze(dim=2)
+            ).squeeze(dim=2)
             framebuffer = framebuffer - reconstruction
 
-        where_loc = torch.cat(locs, dim=2)
-        where_scale = torch.cat(scales, dim=2)
-        where = torch.cat(q_wheres, dim=2)
+        where_loc = torch.stack(locs, dim=2)
+        where_scale = torch.stack(scales, dim=2)
+        where = torch.stack(q_wheres, dim=2)
 
         q.normal(where_loc, where_scale, value=where, name='z^{where}')
 
