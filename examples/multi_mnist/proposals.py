@@ -112,14 +112,15 @@ class StepLocationsProposal(nn.Module):
     def forward(self, q, wheres, whats, wheres_fb, data=None):
         recons = self.spatial_transformer.predict_obj_mean(whats, True)
         _, _, K, glimpse_side, _ = recons.shape
-        P, B, _, img_side, _ = data.shape
+        P, B, img_side, _ = data.shape
 
         locs = []
         scales = []
         q_wheres = []
         framebuffer = data
         for k in range(K):
-            features = framebuffer.view(P * B, img_side, img_side).unsqueeze(0)
+            features = framebuffer.reshape(P * B, img_side, img_side)
+            features = features.unsqueeze(0)
             kernel = recons[:, :, k, :, :].view(P * B, glimpse_side,
                                                 glimpse_side).unsqueeze(1)
             features = F.conv2d(features, kernel, groups=int(P * B))
