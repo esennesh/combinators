@@ -67,4 +67,4 @@ class StepObjects(nn.Module):
                                                                wheres_t)
         p.bernoulli(reconstructions, name='x', value=data)
 
-        return wheres
+        return wheres_t
