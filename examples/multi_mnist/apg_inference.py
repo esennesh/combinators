@@ -9,10 +9,11 @@ import combinators.inference.resample as resample
 import combinators.inference.variational as variational
 
 class ApgLoss(variational.VariationalLoss):
-    def __init__(self, diagram):
+    def __init__(self, diagram, particle_shape=(1,)):
         super().__init__(diagram)
         self._elbos = []
         self._eubos = []
+        self._particle_shape = particle_shape
 
     @property
     def elbos(self):
@@ -26,23 +27,25 @@ class ApgLoss(variational.VariationalLoss):
         diagram = self._globals[0]
         _, log_weight = sampler.trace(diagram)
 
-        theta_elbo = -variational.elbo(log_weight, iwae=True)
+        theta_elbo = -variational.elbo(log_weight, iwae=True,
+                                       particle_shape=self._particle_shape)
         self._elbos.append(theta_elbo)
 
-        phi_eubo   = variational.eubo(log_weight, iwae=False)
+        phi_eubo   = variational.eubo(log_weight, iwae=False,
+                                      particle_shape=self._particle_shape)
         self._eubos.append(phi_eubo)
 
         return theta_elbo + phi_eubo
 
-def hooks_apg(graph):
-    resample.hook_resampling(graph, method='put', when='pre',
+def hooks_apg(graph, particle_shape):
+    resample.hook_resampling(graph, particle_shape, method='put', when='pre',
                              resampler_cls=resample.SystematicResampler)
-    losses = ApgLoss(graph)
+    losses = ApgLoss(graph, particle_shape)
     variational.hook_variational(graph, losses, method='put', when='post')
     return losses
 
-def apg(diagram, num_iterations, use_cuda=True, lr=1e-3, patience=50,
-        num_sweeps=6):
+def apg(diagram, num_iterations, particle_shape, use_cuda=True, lr=1e-3,
+        patience=50, num_sweeps=6):
     for box in diagram:
         if isinstance(box, sampler.ImportanceWiringBox):
             box.target.train()
@@ -55,7 +58,7 @@ def apg(diagram, num_iterations, use_cuda=True, lr=1e-3, patience=50,
                 box.proposal.cuda()
 
     graph = sampler.compile(diagram >> signal.Cap(diagram.cod))
-    losses = hooks_apg(graph)
+    losses = hooks_apg(graph, particle_shape)
 
     filtering = sampler.filtering(graph)
     smoothing = sampler.smoothing(graph)
