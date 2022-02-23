@@ -230,7 +230,8 @@ class Copy(CartesianBox):
         return args * self._n
 
     def combine(self, *args):
-        bkwds = args[len(self.dom):len(self.dom) * 2]
+        assert len(args) == len(self.dom) + len(self.cod)
+        bkwds = args[len(self.dom):len(self.dom) + len(self.cod)]
         for k in range(1, self._n):
             bkwdy = args[(k + 1) * len(self.dom):(k + 2) * len(self.dom)]
             bkwds = tuple(self._join(x, y) for x, y in zip(bkwds, bkwdy))
