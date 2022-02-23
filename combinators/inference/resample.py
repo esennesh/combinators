@@ -24,8 +24,9 @@ def index_select_rv(rv, particle_shape, ancestors):
     return result
 
 class Resampler:
-    def __init__(self, diagram):
+    def __init__(self, diagram, particle_shape):
         self._diagram = diagram
+        self._particle_shape = particle_shape
 
     @property
     def diagram(self):
@@ -64,7 +65,7 @@ class Resampler:
         if not torch.is_tensor(log_weight) or (log_weight == 0.).all():
             return args, kwargs
         ancestors = self.ancestor_indices(log_weight)
-        particle_shape = log_weight.shape
+        particle_shape = self._particle_shape
 
         for box in self.diagram:
             if isinstance(box, sampler.ImportanceWiringBox) and box.cache:
@@ -107,9 +108,9 @@ class MultinomialResampler(Resampler):
         indices = torch.multinomial(weights, weights.shape[1], replacement=True)
         return indices.reshape(*log_weight.shape)
 
-def hook_resampling(graph, method='get', resampler_cls=SystematicResampler,
-                    when='post'):
-    resampler = resampler_cls(graph)
+def hook_resampling(graph, particle_shape, method='get',
+                    resampler_cls=SystematicResampler, when='post'):
+    resampler = resampler_cls(graph, particle_shape)
 
     for box in graph:
         if isinstance(box, sampler.ImportanceWiringBox):
