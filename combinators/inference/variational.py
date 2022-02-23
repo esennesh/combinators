@@ -88,11 +88,11 @@ class VariationalLoss:
         return self._loss
 
     @abstractmethod
-    def objective(self, *args):
+    def objective(self):
         pass
 
     def accumulate(self, *vals):
-        self._loss = self._loss + self.objective(*vals)
+        self._loss = self._loss + self.objective()
         return vals
 
 def hook_variational(graph, variational, method='put', when='post'):
