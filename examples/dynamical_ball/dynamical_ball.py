@@ -20,13 +20,13 @@ class InitBallDynamics(nn.Module):
         self.register_parameter('noise__loc', nn.Parameter(torch.ones(2)))
         self.register_parameter('noise__scale', nn.Parameter(torch.ones(2)))
 
-    def forward(self, p, batch_shape=(1,)):
-        loc = self.uncertainty__loc.expand(*batch_shape, 2)
-        scale = self.uncertainty__scale.expand(*batch_shape, 2)
+    def forward(self, p, batch_shape=(1,), particle_shape=(1,)):
+        loc = self.uncertainty__loc.expand(*particle_shape, *batch_shape, 2)
+        scale = self.uncertainty__scale.expand(*particle_shape, *batch_shape, 2)
         uncertainty = softplus(p.normal(loc, scale, name='uncertainty'))
 
-        loc = self.noise__loc.expand(*batch_shape, 2)
-        scale = self.noise__scale.expand(*batch_shape, 2)
+        loc = self.noise__loc.expand(*particle_shape, *batch_shape, 2)
+        scale = self.noise__scale.expand(*particle_shape, *batch_shape, 2)
         noise = softplus(p.normal(loc, scale, name='noise'))
         return uncertainty, noise
 
@@ -48,19 +48,19 @@ class InitDynamicsProposal(nn.Module):
 
     def forward(self, q, uncertainties, noises, data={}):
         if len(uncertainties.shape) < 3:
-            uncertainties = uncertainties.unsqueeze(1)
+            uncertainties = uncertainties.unsqueeze(2)
         if len(noises.shape) < 3:
-            noises = noises.unsqueeze(1)
+            noises = noises.unsqueeze(2)
         uncertainty_stats = self.uncertainty_gibbs(torch.cat(
-            (uncertainties.mean(dim=1),
-             uncertainties.std(dim=1, unbiased=False)), dim=1
-        )).view(-1, 2, 2).unbind(dim=-1)
+            (uncertainties.mean(dim=2),
+             uncertainties.std(dim=2, unbiased=False)), dim=2
+        )).view(-1, noises.shape[1], 2, 2).unbind(dim=-1)
         q.normal(uncertainty_stats[0], softplus(uncertainty_stats[1]),
                  name='uncertainty')
 
         noise_stats = self.noise_gibbs(torch.cat(
-            (noises.mean(dim=1), noises.std(dim=1, unbiased=False)), dim=1
-        )).view(-1, 2, 2).unbind(dim=-1)
+            (noises.mean(dim=2), noises.std(dim=2, unbiased=False)), dim=2
+        )).view(-1, noises.shape[1], 2, 2).unbind(dim=-1)
         q.normal(noise_stats[0], softplus(noise_stats[1]), name='noise')
 
     def feedback(self, p, *args, data={}):
@@ -79,15 +79,15 @@ class InitialBallState(nn.Module):
         self.register_parameter('position_0__scale',
                                 nn.Parameter(torch.ones(2)))
 
-    def forward(self, p, batch_shape=(1,)):
-        loc = self.velocity_0__loc.expand(*batch_shape, 2)
-        scale = self.velocity_0__scale.expand(*batch_shape, 2)
+    def forward(self, p, batch_shape=(1,), particle_shape=(1,)):
+        loc = self.velocity_0__loc.expand(*particle_shape, *batch_shape, 2)
+        scale = self.velocity_0__scale.expand(*particle_shape, *batch_shape, 2)
         direction = p.normal(loc, scale, name='velocity_0')
-        speed = torch.sqrt(torch.sum(direction**2, dim=1))
+        speed = torch.sqrt(torch.sum(direction**2, dim=2))
         direction = direction / speed.unsqueeze(-1).expand(*direction.shape)
 
-        loc = self.position_0__loc.expand(*batch_shape, 2)
-        scale = self.position_0__scale.expand(*batch_shape, 2)
+        loc = self.position_0__loc.expand(*particle_shape, *batch_shape, 2)
+        scale = self.position_0__scale.expand(*particle_shape, *batch_shape, 2)
         position = p.normal(loc, scale, name='position_0')
 
         return direction, position
@@ -114,14 +114,12 @@ class InitBallProposal(nn.Module):
         if len(position.shape) < 3:
             position = position.unsqueeze(1)
 
-        vel_stats = self.velocity_gibbs(torch.cat(
-            (direction.mean(dim=1), direction.std(dim=1, unbiased=False)), dim=1
-        )).view(-1, 2, 2).unbind(dim=1)
+        vel_stats = self.velocity_gibbs(torch.cat((direction, position), dim=2))
+        vel_stats = vel_stats.view(-1, direction.shape[1], 2, 2).unbind(dim=2)
         q.normal(vel_stats[0], softplus(vel_stats[1]), name='velocity_0')
 
-        pos_stats = self.position_gibbs(torch.cat(
-            (position.mean(dim=1), position.std(dim=1, unbiased=False)), dim=1
-        )).view(-1, 2, 2).unbind(dim=1)
+        pos_stats = self.position_gibbs(torch.cat((position, direction), dim=2))
+        pos_stats = pos_stats.view(-1, direction.shape[1], 2, 2).unbind(dim=2)
         q.normal(pos_stats[0], softplus(pos_stats[1]), name='position_0')
 
     def feedback(self, p, *args, data={}):
@@ -129,16 +127,16 @@ class InitBallProposal(nn.Module):
 
 def reflect_on_boundary(position, direction, boundary, d=0, positive=True):
     sign = 1.0 if positive else -1.0
-    overage = position[:, d] - sign * boundary
+    overage = position[:, :, d] - sign * boundary
     overage = torch.where(torch.sign(overage) == sign, overage,
                           torch.zeros(*overage.shape, device=position.device))
-    position = list(torch.unbind(position, 1))
+    position = list(torch.unbind(position, dim=2))
     position[d] = position[d] - 2 * overage
-    position = torch.stack(position, dim=1)
+    position = torch.stack(position, dim=2)
 
-    direction = list(torch.unbind(direction, 1))
+    direction = list(torch.unbind(direction, dim=2))
     direction[d] = torch.where(overage != 0.0, -direction[d], direction[d])
-    direction = torch.stack(direction, dim=1)
+    direction = torch.stack(direction, dim=2)
     return position, direction
 
 def simulate_step(position, velocity):
@@ -192,8 +190,8 @@ class StepBallProposal(nn.Module):
                 next_pos, data={}):
         velocity_stats = self.direction_gibbs(torch.cat(
             (prev_dir, prev_pos, next_dir, next_pos, uncertainty, noise),
-            dim=1,
-        )).view(-1, 2, 2)
+            dim=2,
+        )).view(-1, noise.shape[1], 2, 2)
         velocity_loc = velocity_stats[:, :, 0]
         velocity_scale = softplus(velocity_stats[:, :, 1])
         q.normal(loc=velocity_loc, scale=velocity_scale, name='velocity')
@@ -201,6 +199,6 @@ class StepBallProposal(nn.Module):
     def feedback(self, p, prev_dir, prev_pos, uncertainty, noise, data={}):
         stats = self.direction_feedback(torch.cat(
             (p['velocity'].value, p['position'].value, uncertainty, noise),
-            dim=1,
-        )).view(-1, 2, 4)
+            dim=2,
+        )).view(-1, noise.shape[1], 2, 4)
         return torch.unbind(stats, dim=-1)

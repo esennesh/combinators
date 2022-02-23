@@ -5,7 +5,7 @@ from torch.distributions import Categorical, Normal
 import torch
 import torch.nn as nn
 
-from combinators.utils import batch_expand, particle_index
+from combinators.utils import particle_expand, particle_index
 
 class GaussianClusters(nn.Module):
     def __init__(self, num_clusters, dim=2, mu=None, concentration=None,
@@ -26,12 +26,12 @@ class GaussianClusters(nn.Module):
         self.register_buffer('concentration', concentration)
         self.register_buffer('rate', rate)
 
-    def forward(self, p, batch_shape=(1,)):
-        concentration = batch_expand(self.concentration, batch_shape)
-        rate = batch_expand(self.rate, batch_shape)
+    def forward(self, p, particle_shape=(1,)):
+        concentration = particle_expand(self.concentration, particle_shape)
+        rate = particle_expand(self.rate, particle_shape)
         taus = p.gamma(concentration, rate, name='tau')
         sigmas = (1. / taus).sqrt()
-        mu = batch_expand(self.mu, batch_shape)
+        mu = particle_expand(self.mu, particle_shape)
         mus = p.normal(mu, sigmas, name='mu')
 
         return mus, sigmas
@@ -71,15 +71,14 @@ class ClustersGibbs(nn.Module):
         return ()
 
 class SampleCluster(nn.Module):
-    def __init__(self, num_clusters, num_samples):
+    def __init__(self, num_clusters):
         super().__init__()
 
         self._num_clusters = num_clusters
-        self._num_samples = num_samples
         self.register_buffer('pi', torch.ones(self._num_clusters))
 
-    def forward(self, p, batch_shape=(1,)):
-        pi = batch_expand(self.pi, (*batch_shape, self._num_samples))
+    def forward(self, p, batch_shape=(1,), particle_shape=(1,)):
+        pi = particle_expand(self.pi, particle_shape + batch_shape)
         return p.variable(Categorical, pi, name='z')
 
 class AssignmentGibbs(nn.Module):
@@ -101,12 +100,12 @@ class ObservationGibbs(nn.Module):
 
     def feedback(self, p, mus, sigmas, zs, data=None):
         xs = data
+        num_clusters = mus.shape[1]
         def log_likelihood(k):
             return Normal(mus[:, k], sigmas[:, k]).log_prob(xs).sum(dim=-1)
         log_conditionals = torch.stack([log_likelihood(k) for k
-                                        in range(mus.shape[1])], dim=-1)
+                                        in range(num_clusters)], dim=-1)
 
-        num_clusters = mus.shape[1]
         zsk = nn.functional.one_hot(zs, num_clusters).unsqueeze(-1)
         xsk = xs.unsqueeze(2).expand(xs.shape[0], xs.shape[1], num_clusters,
                                      xs.shape[2]) * zsk

@@ -7,7 +7,7 @@ from matplotlib.patches import Ellipse
 import matplotlib.pyplot as plt
 import numpy as np
 import probtorch
-from probtorch.util import log_mean_exp, log_sum_exp
+from probtorch.util import log_mean_exp
 import torch
 from torch.distributions import Gumbel
 import torch.nn as nn
@@ -104,8 +104,8 @@ def reused_variable(px, py, k):
 def gumbel_max_resample(log_weights):
     particle_logs, _ = batch_collapse(log_weights, log_weights.shape)
     ancestors = gumbel_max_categorical(particle_logs, particle_logs.shape)
-    log_marginal = batch_expand(log_mean_exp(particle_logs, dim=0),
-                                log_weights.shape)
+    log_marginal = particle_expand(log_mean_exp(particle_logs, dim=0),
+                                   log_weights.shape)
     return ancestors, log_marginal
 
 def gumbel_max_categorical(log_probs, sample_shape):
@@ -115,24 +115,39 @@ def gumbel_max_categorical(log_probs, sample_shape):
     gumbels = dist.sample(sample_shape)
     return torch.argmax(gumbels + log_probs, dim=-1)
 
-def normalize_weights(log_weights):
-    batch_shape = log_weights.shape
-    log_weights, _ = batch_collapse(log_weights, batch_shape)
-    return softmax(log_weights, dim=0).reshape(*batch_shape)
+def normalize_weights(log_weights, particle_shape=None):
+    if particle_shape is None:
+        particle_shape = log_weights.shape
+    log_weights, unique = batch_collapse(log_weights, particle_shape)
+    return softmax(log_weights, dim=0).reshape(*particle_shape, *unique)
 
 def unique_shape(tensor, shape):
     for i, dim in enumerate(tensor.shape):
-        if i >= len(shape) or (dim != 1 and shape[i] != dim):
+        if i >= len(shape) or dim != shape[i]:
             return tensor.shape[i:]
     return ()
 
-def batch_log_sum_exp(tensor):
-    batch_tensor, _ = batch_collapse(tensor, tensor.shape)
-    return log_sum_exp(batch_tensor, dim=0)
+def unique_dim(shapex, shapey):
+    for i, (x, y) in enumerate(zip(shapex, shapey)):
+        if x != y:
+            return i
+    if len(shapex) < len(shapey):
+        return len(shapex)
+    if len(shapey) < len(shapex):
+        return len(shapey)
+    return None
 
-def batch_sum(tensor):
-    batch_tensor, _ = batch_collapse(tensor, tensor.shape)
-    return batch_tensor.sum(dim=0)
+def batch_softmax(tensor, particle_shape=None):
+    if particle_shape is None:
+        particle_shape = tensor.shape
+    batch_tensor, unique = batch_collapse(tensor, particle_shape)
+    return softmax(batch_tensor, dim=0).reshape(*particle_shape, *unique)
+
+def batch_sum(tensor, particle_shape=None):
+    if particle_shape is None:
+        particle_shape = tensor.shape
+    batch_tensor, unique = batch_collapse(tensor, particle_shape)
+    return batch_tensor.sum(dim=0).reshape(*unique)
 
 def batch_mean(tensor, batch_shape=None):
     if not batch_shape:
@@ -140,8 +155,10 @@ def batch_mean(tensor, batch_shape=None):
     batch_tensor, _ = batch_collapse(tensor, batch_shape)
     return batch_tensor.mean(dim=0)
 
-def batch_marginalize(tensor):
-    batch_tensor, _ = batch_collapse(tensor, tensor.shape)
+def batch_marginalize(tensor, batch_shape=None):
+    if not batch_shape:
+        batch_shape = tensor.shape
+    batch_tensor, _ = batch_collapse(tensor, batch_shape)
     return log_mean_exp(batch_tensor, dim=0)
 
 def batch_collapse(tensor, shape):
@@ -256,7 +273,7 @@ def plot_evidence_bounds(bounds, lower=True, figsize=(10, 10), scale='linear'):
 
     plt.show()
 
-def batch_expand(tensor, shape, check=False):
+def particle_expand(tensor, shape, check=False):
     if not shape or (check and not unique_shape(tensor, shape)):
         return tensor
     return tensor.expand(*shape, *unique_shape(tensor, shape))
@@ -285,9 +302,15 @@ def optional_to(tensor, other):
     return tensor
 
 def particle_index(tensor, indices):
+    dim = unique_dim(tensor.shape, indices.shape)
+    common = tensor.shape[:dim]
+    tensor, tensor_unique = batch_collapse(tensor, common)
+    indices, indices_unique = batch_collapse(indices, common)
+
     indexed_tensors = [t[indices[particle]] for particle, t in
                        enumerate(torch.unbind(tensor, 0))]
-    return torch.stack(indexed_tensors, dim=0)
+    indexed_shape = common + indices_unique + tensor_unique[1:]
+    return torch.stack(indexed_tensors, dim=0).reshape(indexed_shape)
 
 def relaxed_categorical(probs, name, this=None):
     if this.training:
