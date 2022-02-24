@@ -9,7 +9,7 @@ from discopy import cartesian, messages, monoidal, wiring
 from . import lens, signal, utils
 
 class WeightedSampler(torch.nn.Module):
-    def __init__(self, target, batch_shape=(1,), particle_shape=(1,)):
+    def __init__(self, target, proposal, batch_shape=(1,), particle_shape=(1,)):
         super().__init__()
         sig = inspect.signature(target.forward)
 
@@ -20,6 +20,7 @@ class WeightedSampler(torch.nn.Module):
         self._pass_particle_shape = 'particle_shape' in sig.parameters
 
         self.add_module('target', target)
+        self.add_module('proposal', proposal)
 
     @property
     def batch_shape(self):
@@ -53,6 +54,8 @@ class WeightedSampler(torch.nn.Module):
 
         args, kwargs = self.expand_args(*args, **kwargs)
 
+        q = probtorch.Trace() 
+        self.proposal(q, *args, **kwargs)
         p = probtorch.NestedTrace(q=q)
         result = self.target(p, *args, **kwargs)
 
@@ -233,7 +236,7 @@ def importance_box(name, target, proposal, batch_shape, particle_shape, dom,
         cod = cod & monoidal.PRO(len(cod))
     assert len(cod.upper) == len(cod.lower)
 
-    target = WeightedSampler(target, batch_shape, particle_shape)
+    target = WeightedSampler(target, proposal, batch_shape, particle_shape)
     return ImportanceBox(name, dom, cod, target, proposal, data=data)
 
 @lru_cache(maxsize=None)

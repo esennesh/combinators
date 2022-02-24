@@ -84,7 +84,7 @@ class SystematicResampler(Resampler):
     def ancestor_indices(self, log_weight):
         log_weights, unique = utils.batch_collapse(log_weight,
                                                    self._particle_shape)
-        weights = F.softmax(log_weights, dim=0)
+        weights = F.softmax(log_weights, dim=0).detach()
         K = self._particle_shape[0]
 
         uniforms = torch.rand(*unique, device=weights.device)

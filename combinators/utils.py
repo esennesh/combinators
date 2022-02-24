@@ -11,7 +11,7 @@ from probtorch.util import log_mean_exp
 import torch
 from torch.distributions import Gumbel
 import torch.nn as nn
-from torch.nn.functional import softmax
+from torch.nn.functional import log_softmax, softmax
 
 EMPTY_TRACE = collections.defaultdict(lambda: None)
 
@@ -115,10 +115,12 @@ def gumbel_max_categorical(log_probs, sample_shape):
     gumbels = dist.sample(sample_shape)
     return torch.argmax(gumbels + log_probs, dim=-1)
 
-def normalize_weights(log_weights, particle_shape=None):
+def normalize_weights(log_weights, particle_shape=None, log=False):
     if particle_shape is None:
         particle_shape = log_weights.shape
     log_weights, unique = batch_collapse(log_weights, particle_shape)
+    if log:
+        return log_softmax(log_weights, dim=0).reshape(*particle_shape, *unique)
     return softmax(log_weights, dim=0).reshape(*particle_shape, *unique)
 
 def unique_shape(tensor, shape):
