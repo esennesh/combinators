@@ -12,7 +12,7 @@ from .. import sampler, utils
 def diagram_ess(diagram):
     _, log_weight = sampler.trace(diagram)
     result = effective_sample_size(log_weight, log_weight.shape[:-1])
-    logging.info('Effective sample size (ESS) of %d based upon K=%d samples',
+    logging.info('Effective sample size (ESS) of %.4e based upon K=%d samples',
                  result, math.prod(log_weight.shape[:-1]))
     return result
 
