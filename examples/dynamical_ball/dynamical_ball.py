@@ -175,13 +175,13 @@ class StepBallProposal(nn.Module):
         super().__init__()
 
         self.direction_gibbs = nn.Sequential(
-            nn.Linear(2 * 6, 16), nn.PReLU(),
+            nn.Linear(2 * 7, 16), nn.PReLU(),
             nn.Linear(16, 16), nn.PReLU(),
             nn.Linear(16, 4)
         )
 
         self.direction_feedback = nn.Sequential(
-            nn.Linear(2 * 4, 16), nn.PReLU(),
+            nn.Linear(2 * 6, 16), nn.PReLU(),
             nn.Linear(16, 16), nn.PReLU(),
             nn.Linear(16, 2 * 4)
         )
@@ -189,7 +189,7 @@ class StepBallProposal(nn.Module):
     def forward(self, q, prev_dir, prev_pos, uncertainty, noise, next_dir,
                 next_pos, data={}):
         velocity_stats = self.direction_gibbs(torch.cat(
-            (prev_dir, prev_pos, next_dir, next_pos, uncertainty, noise),
+            (prev_dir, prev_pos, data, next_dir, next_pos, uncertainty, noise),
             dim=2,
         )).view(-1, noise.shape[1], 2, 2)
         velocity_loc = velocity_stats[:, :, 0]
@@ -198,7 +198,8 @@ class StepBallProposal(nn.Module):
 
     def feedback(self, p, prev_dir, prev_pos, uncertainty, noise, data={}):
         stats = self.direction_feedback(torch.cat(
-            (p['velocity'].value, p['position'].value, uncertainty, noise),
+            (prev_dir, prev_pos, p['velocity'].value, p['position'].value,
+             uncertainty, noise),
             dim=2,
         )).view(-1, noise.shape[1], 2, 4)
         return torch.unbind(stats, dim=-1)
