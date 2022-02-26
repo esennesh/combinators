@@ -65,6 +65,6 @@ class StepObjects(nn.Module):
 
         reconstructions = self.spatial_transformer.reconstruct(obj_avgs,
                                                                wheres_t)
-        p.bernoulli(reconstructions, name='x', value=data)
+        p.continuous_bernoulli(reconstructions, name='x', value=data)
 
         return wheres_t
