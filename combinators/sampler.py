@@ -156,27 +156,21 @@ class ImportanceSemanticsFunctor(lens.CartesianSemanticsFunctor):
     @classmethod
     def semantics(cls, f):
         if isinstance(f, ImportanceBox):
-            return ImportanceWiringBox(f.name, f.dom, f.cod, f.target,
-                                       f.proposal, data=f.data)
+            return ImportanceWiringBox(f.name, f.dom, f.cod, f.sampler,
+                                       data=f.data)
         return super(ImportanceSemanticsFunctor, cls).semantics(f)
 
 class ImportanceBox(lens.Box):
     IMPORTANCE_SEMANTICS = ImportanceSemanticsFunctor()
-    def __init__(self, name, dom, cod, target, proposal, data={}):
-        assert isinstance(target, torch.nn.Module)
-        self._target = target
-        assert isinstance(proposal, torch.nn.Module)
-        self._proposal = proposal
+    def __init__(self, name, dom, cod, sampler, data={}):
+        assert isinstance(sampler, WeightedSampler)
+        self._sampler = sampler
 
         super().__init__(name, dom, cod, data)
 
     @property
-    def target(self):
-        return self._target
-
-    @property
-    def proposal(self):
-        return self._proposal
+    def sampler(self):
+        return self._sampler
 
 class Copy(lens.Copy):
     def __init__(self, dom, n=2):
@@ -322,8 +316,8 @@ def importance_box(name, target, proposal, batch_shape, particle_shape, dom,
         cod = cod & monoidal.PRO(len(cod))
     assert len(cod.upper) == len(cod.lower)
 
-    target = WeightedSampler(target, batch_shape, particle_shape)
-    return ImportanceBox(name, dom, cod, target, proposal, data=data)
+    sampler = WeightedSampler(target, proposal, batch_shape, particle_shape)
+    return ImportanceBox(name, dom, cod, sampler, data=data)
 
 @lru_cache(maxsize=None)
 def compile(diagram):
