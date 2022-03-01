@@ -17,8 +17,8 @@ class SequentialConditioner(lens.Functor):
             if not isinstance(data, dict):
                 data = {'data': data}
 
-            return box.__class__(box.name, box.dom, box.cod, box.target,
-                                 box.proposal, data={**data, **box.data})
+            return box.__class__(box.name, box.dom, box.cod, box.sampler,
+                                 data={**data, **box.data})
         return box
 
 def sequential(graph, **kwargs):
