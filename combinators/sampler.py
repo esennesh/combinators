@@ -263,20 +263,22 @@ def trace(diagram):
     assert isinstance(diagram, wiring.Diagram)
     merge = utils.TracingMerger()
     for f in diagram:
-        if isinstance(f, ImportanceWiringBox) and f.cache:
-            _, (_, p, log_weight) = f.peek()
-            merge(p, log_weight)
+        if isinstance(f, ImportanceWiringBox):
+            inference = f.sampler.inference_state
+            if inference:
+                merge(*inference)
     return merge.p, merge.log_weight
 
 def clear(diagram):
     assert isinstance(diagram, wiring.Diagram)
     for f in diagram:
         if isinstance(f, ImportanceWiringBox):
-            f.clear()
+            f.sampler.clear()
 
 def __params_falgebra__(f):
     if isinstance(f, ImportanceWiringBox):
-        return set(f.target.parameters()), set(f.proposal.parameters())
+        target, proposal = f.sampler.target, f.sampler.proposal
+        return set(target.parameters()), set(proposal.parameters())
     if isinstance(f, (wiring.Id, lens.CartesianWiringBox)):
         return set(), set()
     if isinstance(f, wiring.Sequential):
