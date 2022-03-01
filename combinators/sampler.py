@@ -9,16 +9,18 @@ from discopy import cartesian, messages, monoidal, wiring
 from . import lens, signal, utils
 
 class WeightedSampler(torch.nn.Module):
-    def __init__(self, target, batch_shape=(1,), particle_shape=(1,)):
+    def __init__(self, target, proposal, batch_shape=(1,), particle_shape=(1,)):
         super().__init__()
         sig = inspect.signature(target.forward)
-
         self._batch_shape = batch_shape
         self._particle_shape = particle_shape
         self._pass_data = 'data' in sig.parameters
         self._pass_batch_shape = 'batch_shape' in sig.parameters
         self._pass_particle_shape = 'particle_shape' in sig.parameters
 
+        self._cache = utils.TensorialCache(None, self.forward)
+
+        self.add_module('proposal', proposal)
         self.add_module('target', target)
 
     @property
@@ -32,6 +34,23 @@ class WeightedSampler(torch.nn.Module):
     @property
     def pass_data(self):
         return self._pass_data
+
+    @property
+    def cache(self):
+        return self._cache
+
+    def peek(self):
+        return self._cache.peek()
+
+    def clear(self):
+        return self._cache.clear()
+
+    @property
+    def inference_state(self):
+        if self.cache:
+            _, (_, p, log_weight) = self.peek()
+            return p, log_weight
+        return None
 
     def expand_args(self, *args, **kwargs):
         args = tuple(utils.particle_expand(arg, self.particle_shape, True)
@@ -62,6 +81,76 @@ class WeightedSampler(torch.nn.Module):
             assert log_weight.shape == (self.particle_shape + self.batch_shape)
 
         return cartesian.tuplify(result), p, log_weight
+
+    def fill_args(self, *args, **kwargs):
+        cached, _ = self.peek()
+        args = tuple(stored if actual is None else actual for (stored, actual)
+                     in zip(cached[0][1:], args))
+        kwargs = {
+            k: cached[1][k] if k not in kwargs or kwargs[k] is None else
+               kwargs[k] for k in kwargs.keys() | cached[1].keys()
+        }
+        return args, kwargs
+
+    def filter(self, *args, **kwargs):
+        return self._cache(None, *args, **kwargs)[0]
+
+    def replay(self, kont, *args, **kwargs):
+        args, kwargs = self.fill_args(*args, **kwargs)
+
+        if ((None, *args), kwargs) in self._cache:
+            result, p, _ = self._cache(None, *args, **kwargs)
+            kontinue = False
+        else:
+            _, (stored_result, q, _) = self.peek()
+            result, p, log_weight = self.forward(q, *args, **kwargs)
+            self._cache[((None, *args), kwargs)] = (result, p, log_weight)
+            kontinue = not utils.tensorial_eqs(stored_result, result)
+
+        if kont and kontinue:
+            for wire, r in zip(kont, result):
+                wire.update(r)
+
+    def feedback(self):
+        (args, kwargs), (_, p, _) = self.cache.peek()
+        return self.proposal.feedback(p, *args[1:], **kwargs)
+
+    def smooth(self, args, wires, **kwargs):
+        dims = tuple(range(len(self.particle_shape)))
+
+        # Retrieve the stored target trace from the cache, initializing by
+        # filtering if necessary.
+        _, p, log_v = self.cache(None, *args, **kwargs)
+        log_orig = p.log_joint(sample_dims=dims, batch_dim=len(dims))
+
+        # Retrieve the feedback corresponding to the stored target trace
+        feedback = ()
+        for wire in wires:
+            feedback = feedback + wire()
+
+        # Rescore the original trace under the proposal kernel
+        q = probtorch.NestedTrace(q=p)
+        self.proposal(q, *args, *feedback, **kwargs)
+        log_rk = q.log_joint(sample_dims=dims, batch_dim=len(dims))
+
+        # Draw the new trace and the feedback from the proposal kernel
+        q = probtorch.Trace()
+        self.proposal(q, *args, *feedback, **kwargs)
+        log_fk = q.log_joint(sample_dims=dims, batch_dim=len(dims))
+
+        # Score the new trace under the target program
+        result, p, _ = self(q, *args, **kwargs)
+        log_update = p.log_joint(sample_dims=dims, batch_dim=len(dims))
+
+        log_v = log_v + (log_update + log_rk) - (log_orig + log_fk)
+        self.cache[((None, *args), kwargs)] = (result, p, log_v)
+
+        # Update the downstream computation
+        for wire, r in zip(wires, result):
+            wire.update(r)
+
+        # Return the feedback corresponding to the new target trace
+        return self.feedback, partial(self.replay, wires)
 
 class ImportanceSemanticsFunctor(lens.CartesianSemanticsFunctor):
     @classmethod
