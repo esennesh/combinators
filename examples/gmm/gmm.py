@@ -56,14 +56,17 @@ class ClustersGibbs(nn.Module):
         self.register_buffer('rate', rate)
 
     def forward(self, q, zsk, xsk):
-        nks = zsk.sum(dim=1)
+        mu = self.mu.expand(*zsk.shape[:2], *self.mu.shape)
+        concentration = self.concentration.expand(*zsk.shape[:2],
+                                                  *self.concentration.shape)
+        rate = self.rate.expand(*zsk.shape[:2], *self.rate.shape)
+
+        nks = zsk.sum(dim=2)
         eff_samples = nks + 1
-        hyper_means = (self.mu.unsqueeze(0) + xsk.sum(dim=1)) / eff_samples
-        concentration = self.concentration.unsqueeze(0) + nks / 2
-        rate = self.rate.unsqueeze(0)
-        rate = rate + 1/2 * (self.mu.unsqueeze(0) ** 2 -
-                             eff_samples * hyper_means ** 2 +
-                             (xsk ** 2).sum(dim=1))
+        hyper_means = (mu + xsk.sum(dim=2)) / eff_samples
+        concentration = concentration + nks / 2
+        rate = rate + 1/2 * (mu ** 2 - eff_samples * hyper_means ** 2 +
+                             (xsk ** 2).sum(dim=2))
 
         precisions = q.gamma(concentration, rate, name='tau') * eff_samples
         q.normal(hyper_means, torch.pow(precisions, -1/2.), name='mu')
