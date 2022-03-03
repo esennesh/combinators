@@ -107,14 +107,15 @@ class ObservationGibbs(nn.Module):
         pass
 
     def feedback(self, p, mus, sigmas, zs, data=None):
-        xs = data
-        num_clusters = mus.shape[1]
+        xs = data.unsqueeze(dim=1)
+        num_clusters = mus.shape[2]
         def log_likelihood(k):
-            return Normal(mus[:, k], sigmas[:, k]).log_prob(xs).sum(dim=-1)
+            normal = Normal(mus[:, :, k], sigmas[:, :, k])
+            return normal.log_prob(xs).sum(dim=-1)
         log_conditionals = torch.stack([log_likelihood(k) for k
                                         in range(num_clusters)], dim=-1)
 
         zsk = nn.functional.one_hot(zs, num_clusters).unsqueeze(-1)
-        xsk = xs.unsqueeze(2).expand(xs.shape[0], xs.shape[1], num_clusters,
-                                     xs.shape[2]) * zsk
+        xsk = xs.unsqueeze(3).expand(*xs.shape[:3], num_clusters, *xs.shape[3:])
+        xsk = xsk * zsk
         return (zsk, xsk, log_conditionals)
