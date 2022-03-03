@@ -26,12 +26,13 @@ class GaussianClusters(nn.Module):
         self.register_buffer('concentration', concentration)
         self.register_buffer('rate', rate)
 
-    def forward(self, p, particle_shape=(1,)):
-        concentration = particle_expand(self.concentration, particle_shape)
-        rate = particle_expand(self.rate, particle_shape)
+    def forward(self, p, batch_shape=(1,), particle_shape=(1,)):
+        shape = particle_shape + batch_shape
+        concentration = particle_expand(self.concentration, shape)
+        rate = particle_expand(self.rate, shape)
         taus = p.gamma(concentration, rate, name='tau')
         sigmas = (1. / taus).sqrt()
-        mu = particle_expand(self.mu, particle_shape)
+        mu = particle_expand(self.mu, shape)
         mus = p.normal(mu, sigmas, name='mu')
 
         return mus, sigmas
