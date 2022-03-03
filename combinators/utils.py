@@ -220,6 +220,8 @@ class TracingMerger:
                 k = stem + '_' + str(n)
             self._p[k] = v
             self._names[stem] += 1
+        if torch.is_tensor(self._log_weight) and torch.is_tensor(log_weight):
+            assert self._log_weight.shape == log_weight.shape
         self._log_weight = self._log_weight + log_weight
 
 def marginalize_all(log_prob):
