@@ -96,7 +96,9 @@ class AssignmentGibbs(nn.Module):
 
 class SamplePoint(nn.Module):
     def forward(self, p, mus, sigmas, z, data=None):
-        mu, sigma = particle_index(mus, z), particle_index(sigmas, z)
+        z = z.unsqueeze(-1)
+        mu = torch.take_along_dim(mus, z , dim=2)
+        sigma = torch.take_along_dim(sigmas, z , dim=2)
         x = p.normal(mu, sigma, name='x', value=data)
         return ()
 
