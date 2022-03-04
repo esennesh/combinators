@@ -48,33 +48,33 @@ class SpatialTransformer(nn.Module):
         return torch.clamp(reconstructions.sum(dim=2), min=0.0, max=1.0)
 
     def glimpse2image(self, glimpse, where):
-        B, P, K, _ = where.shape
+        P, B, K, _ = where.shape
         g2i_scale = self.glimpse_to_img_scale.repeat(*where.shape[:-1], 1, 1)
         g2i_trans = where.unsqueeze(-1) * self.glimpse_to_img_translate
         g2i_trans[:, :, :, 0, :] = -1 * g2i_trans[:, :, :, 0, :]
 
-        g2i = torch.cat((g2i_scale, g2i_trans), dim=-1).view(B * P * K, 2, 3)
-        g2i_size = torch.Size([B * P * K, 1, self._img_side, self._img_side])
+        g2i = torch.cat((g2i_scale, g2i_trans), dim=-1).view(P * B * K, 2, 3)
+        g2i_size = torch.Size([P * B * K, 1, self._img_side, self._img_side])
         grid = F.affine_grid(g2i, g2i_size, align_corners=True)
-        img = F.grid_sample(glimpse.view(B * P * K, self._glimpse_side,
+        img = F.grid_sample(glimpse.view(P * B * K, self._glimpse_side,
                                          self._glimpse_side).unsqueeze(dim=1),
                             grid, mode='nearest', align_corners=True)
-        return img.squeeze(dim=1).view(B, P, K, self._img_side, self._img_side)
+        return img.squeeze(dim=1).view(P, B, K, self._img_side, self._img_side)
 
     def image2glimpse(self, img, where):
-        B, P, K, _ = where.shape
+        P, B, K, _ = where.shape
         i2g_scale = self.img_to_glimpse_scale.repeat(*where.shape[:-1], 1, 1)
         i2g_trans = where.unsqueeze(-1) * self.img_to_glimpse_translate
         i2g_trans[:, :, :, 1, :] = -1 * i2g_trans[:, :, :, 1, :]
 
-        i2g = torch.cat((i2g_scale, i2g_trans), dim=-1).view(B * P * K, 2, 3)
-        i2g_size = torch.Size([B * P * K, 1, self._glimpse_side,
+        i2g = torch.cat((i2g_scale, i2g_trans), dim=-1).view(P * B * K, 2, 3)
+        i2g_size = torch.Size([P * B * K, 1, self._glimpse_side,
                                self._glimpse_side])
         grid = F.affine_grid(i2g, i2g_size, align_corners=True)
-        img = img.unsqueeze(-3).repeat(1, 1, K, 1, 1).view(B * P * K,
+        img = img.unsqueeze(-3).repeat(1, 1, K, 1, 1).view(P * B * K,
                                                            self._img_side,
                                                            self._img_side)
         glimpse = F.grid_sample(img.unsqueeze(dim=1), grid, mode='nearest',
                                 align_corners=True)
-        return glimpse.squeeze(dim=1).view(B, P, K, self._glimpse_side,
+        return glimpse.squeeze(dim=1).view(P, B, K, self._glimpse_side,
                                            self._glimpse_side)
