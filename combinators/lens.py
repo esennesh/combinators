@@ -93,7 +93,7 @@ class PRO(Ty):
     def __repr__(self):
         return "lens.PRO({})".format(len(self))
 
-class CartesianSemanticsFunctor(wiring.Functor):
+class CartesianWiringSemantics(wiring.Functor):
     def __init__(self):
         super().__init__(lambda t: t, self.semantics)
 
@@ -107,7 +107,7 @@ class Diagram(monoidal.Diagram):
     """
     Implements diagrams of lenses composed of Python functions
     """
-    CARTESIAN_SEMANTICS = CartesianSemanticsFunctor()
+    CARTESIAN_SEMANTICS = CartesianWiringSemantics()
     CARTESIAN_GET = wiring.Functor(lambda t: monoidal.PRO(len(t)),
                                    lambda f: f.get(), monoidal.PRO,
                                    cartesian.Diagram)
