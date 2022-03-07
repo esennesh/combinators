@@ -243,18 +243,18 @@ def importance_box(name, target, proposal, batch_shape, particle_shape, dom,
 def compile(diagram):
     return ImportanceBox.IMPORTANCE_SEMANTICS(diagram)
 
-def filtering(diagram):
+def filtering(diagram, precompile=True):
     if not isinstance(diagram, wiring.Diagram):
         diagram = compile(diagram)
-    return lens.getter(diagram)
+    return lens.getter(diagram, precompile)
 
 def filter(diagram, *args, **kwargs):
     return filtering(diagram)(*args, **kwargs)
 
-def smoothing(diagram):
+def smoothing(diagram, precompile=True):
     if not isinstance(diagram, wiring.Diagram):
         diagram = compile(diagram)
-    return lens.putter(diagram)
+    return lens.putter(diagram, precompile)
 
 def smooth(diagram, *args, **kwargs):
     return smoothing(diagram)(*args, **kwargs)
