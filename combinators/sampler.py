@@ -9,16 +9,18 @@ from discopy import cartesian, messages, monoidal, wiring
 from . import lens, signal, utils
 
 class WeightedSampler(torch.nn.Module):
-    def __init__(self, target, batch_shape=(1,), particle_shape=(1,)):
+    def __init__(self, target, proposal, batch_shape=(1,), particle_shape=(1,)):
         super().__init__()
         sig = inspect.signature(target.forward)
-
         self._batch_shape = batch_shape
         self._particle_shape = particle_shape
         self._pass_data = 'data' in sig.parameters
         self._pass_batch_shape = 'batch_shape' in sig.parameters
         self._pass_particle_shape = 'particle_shape' in sig.parameters
 
+        self._cache = utils.TensorialCache(None, self.forward)
+
+        self.add_module('proposal', proposal)
         self.add_module('target', target)
 
     @property
@@ -32,6 +34,23 @@ class WeightedSampler(torch.nn.Module):
     @property
     def pass_data(self):
         return self._pass_data
+
+    @property
+    def cache(self):
+        return self._cache
+
+    def peek(self):
+        return self._cache.peek()
+
+    def clear(self):
+        return self._cache.clear()
+
+    @property
+    def inference_state(self):
+        if self.cache:
+            _, (_, p, log_weight) = self.peek()
+            return p, log_weight
+        return None
 
     def expand_args(self, *args, **kwargs):
         args = tuple(utils.particle_expand(arg, self.particle_shape, True)
@@ -63,31 +82,95 @@ class WeightedSampler(torch.nn.Module):
 
         return cartesian.tuplify(result), p, log_weight
 
-class ImportanceSemanticsFunctor(lens.CartesianSemanticsFunctor):
+    def fill_args(self, *args, **kwargs):
+        cached, _ = self.peek()
+        args = tuple(stored if actual is None else actual for (stored, actual)
+                     in zip(cached[0][1:], args))
+        kwargs = {
+            k: cached[1][k] if k not in kwargs or kwargs[k] is None else
+               kwargs[k] for k in kwargs.keys() | cached[1].keys()
+        }
+        return args, kwargs
+
+    def filter(self, *args, **kwargs):
+        return self._cache(None, *args, **kwargs)[0]
+
+    def replay(self, kont, *args, **kwargs):
+        args, kwargs = self.fill_args(*args, **kwargs)
+
+        if ((None, *args), kwargs) in self._cache:
+            result, p, _ = self._cache(None, *args, **kwargs)
+            kontinue = False
+        else:
+            _, (stored_result, q, _) = self.peek()
+            result, p, log_weight = self.forward(q, *args, **kwargs)
+            self._cache[((None, *args), kwargs)] = (result, p, log_weight)
+            kontinue = not utils.tensorial_eqs(stored_result, result)
+
+        if kont and kontinue:
+            for wire, r in zip(kont, result):
+                wire.update(r)
+
+    def feedback(self):
+        (args, kwargs), (_, p, _) = self.cache.peek()
+        return self.proposal.feedback(p, *args[1:], **kwargs)
+
+    def smooth(self, args, wires, **kwargs):
+        dims = tuple(range(len(self.particle_shape)))
+
+        # Retrieve the stored target trace from the cache, initializing by
+        # filtering if necessary.
+        _, p, log_v = self.cache(None, *args, **kwargs)
+        log_orig = p.log_joint(sample_dims=dims, batch_dim=len(dims))
+
+        # Retrieve the feedback corresponding to the stored target trace
+        feedback = ()
+        for wire in wires:
+            feedback = feedback + wire()
+
+        # Rescore the original trace under the proposal kernel
+        q = probtorch.NestedTrace(q=p)
+        self.proposal(q, *args, *feedback, **kwargs)
+        log_rk = q.log_joint(sample_dims=dims, batch_dim=len(dims))
+
+        # Draw the new trace and the feedback from the proposal kernel
+        q = probtorch.Trace()
+        self.proposal(q, *args, *feedback, **kwargs)
+        log_fk = q.log_joint(sample_dims=dims, batch_dim=len(dims))
+
+        # Score the new trace under the target program
+        result, p, _ = self(q, *args, **kwargs)
+        log_update = p.log_joint(sample_dims=dims, batch_dim=len(dims))
+
+        log_v = log_v + (log_update + log_rk) - (log_orig + log_fk)
+        self.cache[((None, *args), kwargs)] = (result, p, log_v)
+
+        # Update the downstream computation
+        for wire, r in zip(wires, result):
+            wire.update(r)
+
+        # Return the feedback corresponding to the new target trace
+        return self.feedback, partial(self.replay, wires)
+
+class ImportanceWiringSemantics(lens.CartesianWiringSemantics):
     @classmethod
     def semantics(cls, f):
         if isinstance(f, ImportanceBox):
-            return ImportanceWiringBox(f.name, f.dom, f.cod, f.target,
-                                       f.proposal, data=f.data)
-        return super(ImportanceSemanticsFunctor, cls).semantics(f)
+            return ImportanceWiringBox(f.name, f.dom, f.cod, f.sampler,
+                                       data=f.data)
+        return super(ImportanceWiringSemantics, cls).semantics(f)
 
 class ImportanceBox(lens.Box):
-    IMPORTANCE_SEMANTICS = ImportanceSemanticsFunctor()
-    def __init__(self, name, dom, cod, target, proposal, data={}):
-        assert isinstance(target, torch.nn.Module)
-        self._target = target
-        assert isinstance(proposal, torch.nn.Module)
-        self._proposal = proposal
+    IMPORTANCE_SEMANTICS = ImportanceWiringSemantics()
+    def __init__(self, name, dom, cod, sampler, data={}):
+        assert isinstance(sampler, WeightedSampler)
+        self._sampler = sampler
 
         super().__init__(name, dom, cod, data)
 
     @property
-    def target(self):
-        return self._target
-
-    @property
-    def proposal(self):
-        return self._proposal
+    def sampler(self):
+        return self._sampler
 
 class Copy(lens.Copy):
     def __init__(self, dom, n=2):
@@ -112,117 +195,37 @@ class Copy(lens.Copy):
         return signal.Signal(sx.dom, sig, sig_update)
 
 class ImportanceWiringBox(lens.CartesianWiringBox):
-    def __init__(self, name, dom, cod, target, proposal, data={}):
-        assert isinstance(target, torch.nn.Module)
-        self._target = target
-        assert isinstance(proposal, torch.nn.Module)
-        self._proposal = proposal
-        self._cache = utils.TensorialCache(None, self._target.forward)
+    def __init__(self, name, dom, cod, sampler, data={}):
+        assert isinstance(sampler, WeightedSampler)
+        self._sampler = sampler
 
         super().__init__(name, dom, cod, self.filter, self.smooth, data=data)
 
     @property
-    def target(self):
-        return self._target
-
-    @property
-    def proposal(self):
-        return self._proposal
-
-    @property
-    def cache(self):
-        return self._cache
-
-    def peek(self):
-        return self._cache.peek()
-
-    def clear(self):
-        return self._cache.clear()
+    def sampler(self):
+        return self._sampler
 
     def filter(self, *args, **kwargs):
-        if self._target.pass_data:
+        if self.sampler.pass_data:
             kwargs = {**self.data, **kwargs}
 
-        result, _, _ = self._cache(None, *args, **kwargs)
-        return result
-
-    def fill_args(self, *args, **kwargs):
-        cached, _ = self.peek()
-        args = tuple(stored if actual is None else actual for (stored, actual)
-                     in zip(cached[0][1:], args))
-        kwargs = {
-            k: cached[1][k] if k not in kwargs or kwargs[k] is None else
-               kwargs[k] for k in kwargs.keys() | cached[1].keys()
-        }
-        return args, kwargs
-
-    def replay(self, kont, *args, **kwargs):
-        args, kwargs = self.fill_args(*args, **kwargs)
-
-        if ((None, *args), kwargs) in self._cache:
-            result, p, _ = self._cache(None, *args, **kwargs)
-            kontinue = False
-        else:
-            _, (stored_result, q, _) = self.peek()
-            result, p, log_weight = self._target.forward(q, *args, **kwargs)
-            self._cache[((None, *args), kwargs)] = (result, p, log_weight)
-            kontinue = not utils.tensorial_eqs(stored_result, result)
-
-        if kont and kontinue:
-            for wire, r in zip(kont, result):
-                wire.update(r)
-
-    def feedback(self):
-        (args, kwargs), (_, p, _) = self._cache.peek()
-        return self._proposal.feedback(p, *args[1:], **kwargs)
+        return self.sampler.filter(*args, **kwargs)
 
     def smooth(self, *args, **kwargs):
-        if self._target.pass_data:
-            _, data = self._target.expand_args((), **self.data)
+        if self.sampler.pass_data:
+            _, data = self.sampler.expand_args((), **self.data)
             kwargs = {**data, **kwargs}
-        dims = tuple(range(len(self._target.particle_shape)))
+
         fwd = args[:len(self.dom.upper)]
         if len(fwd) != len(self.dom.upper):
             raise TypeError(messages.expected_input_length(self, fwd))
-        cached_fwd = (None, *fwd)
 
-        # Retrieve the stored target trace from the cache, initializing by
-        # filtering if necessary.
-        _, p, log_v = self._cache(*cached_fwd, **kwargs)
-        log_orig = p.log_joint(sample_dims=dims, batch_dim=len(dims))
-
-        # Retrieve the feedback corresponding to the stored target trace
         wires = args[len(self.dom.upper):]
         if len(wires) != len(self.cod.lower):
             raise TypeError(messages.expected_input_length(self, wires))
-        feedback = ()
-        for w in wires:
-            feedback = feedback + w()
 
-        # Rescore the original trace under the proposal kernel
-        q = probtorch.NestedTrace(q=p)
-        self._proposal.forward(q, *fwd, *feedback, **kwargs)
-        log_rk = q.log_joint(sample_dims=dims, batch_dim=len(dims))
-
-        # Draw the new trace and the feedback from the proposal kernel
-        q = probtorch.Trace()
-        self._proposal.forward(q, *fwd, *feedback, **kwargs)
-        log_fk = q.log_joint(sample_dims=dims, batch_dim=len(dims))
-
-        # Score the new trace under the target program
-        result, p, _ = self._target.forward(q, *fwd, **kwargs)
-        log_update = p.log_joint(sample_dims=dims, batch_dim=len(dims))
-
-        log_v = log_v + (log_update + log_rk) - (log_orig + log_fk)
-        self._cache[(cached_fwd, kwargs)] = (result, p, log_v)
-
-        # Update the downstream computation
-        for w, r in zip(wires, result):
-            w.update(r)
-
-        # Return the feedback corresponding to the new target trace
-        return signal.Signal(len(self.dom.lower), self.feedback,
-                             partial(self.replay, wires)).split()
+        feedback, replay = self.sampler.smooth(fwd, wires, **kwargs)
+        return signal.Signal(len(self.dom.lower), feedback, replay).split()
 
 def importance_box(name, target, proposal, batch_shape, particle_shape, dom,
                    cod, data={}):
@@ -233,25 +236,25 @@ def importance_box(name, target, proposal, batch_shape, particle_shape, dom,
         cod = cod & monoidal.PRO(len(cod))
     assert len(cod.upper) == len(cod.lower)
 
-    target = WeightedSampler(target, batch_shape, particle_shape)
-    return ImportanceBox(name, dom, cod, target, proposal, data=data)
+    sampler = WeightedSampler(target, proposal, batch_shape, particle_shape)
+    return ImportanceBox(name, dom, cod, sampler, data=data)
 
 @lru_cache(maxsize=None)
 def compile(diagram):
     return ImportanceBox.IMPORTANCE_SEMANTICS(diagram)
 
-def filtering(diagram):
+def filtering(diagram, precompile=True):
     if not isinstance(diagram, wiring.Diagram):
         diagram = compile(diagram)
-    return lens.getter(diagram)
+    return lens.getter(diagram, precompile)
 
 def filter(diagram, *args, **kwargs):
     return filtering(diagram)(*args, **kwargs)
 
-def smoothing(diagram):
+def smoothing(diagram, precompile=True):
     if not isinstance(diagram, wiring.Diagram):
         diagram = compile(diagram)
-    return lens.putter(diagram)
+    return lens.putter(diagram, precompile)
 
 def smooth(diagram, *args, **kwargs):
     return smoothing(diagram)(*args, **kwargs)
@@ -260,20 +263,22 @@ def trace(diagram):
     assert isinstance(diagram, wiring.Diagram)
     merge = utils.TracingMerger()
     for f in diagram:
-        if isinstance(f, ImportanceWiringBox) and f.cache:
-            _, (_, p, log_weight) = f.peek()
-            merge(p, log_weight)
+        if isinstance(f, ImportanceWiringBox):
+            inference = f.sampler.inference_state
+            if inference:
+                merge(*inference)
     return merge.p, merge.log_weight
 
 def clear(diagram):
     assert isinstance(diagram, wiring.Diagram)
     for f in diagram:
         if isinstance(f, ImportanceWiringBox):
-            f.clear()
+            f.sampler.clear()
 
 def __params_falgebra__(f):
     if isinstance(f, ImportanceWiringBox):
-        return set(f.target.parameters()), set(f.proposal.parameters())
+        target, proposal = f.sampler.target, f.sampler.proposal
+        return set(target.parameters()), set(proposal.parameters())
     if isinstance(f, (wiring.Id, lens.CartesianWiringBox)):
         return set(), set()
     if isinstance(f, wiring.Sequential):

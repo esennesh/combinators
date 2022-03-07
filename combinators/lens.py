@@ -93,7 +93,7 @@ class PRO(Ty):
     def __repr__(self):
         return "lens.PRO({})".format(len(self))
 
-class CartesianSemanticsFunctor(wiring.Functor):
+class CartesianWiringSemantics(wiring.Functor):
     def __init__(self):
         super().__init__(lambda t: t, self.semantics)
 
@@ -107,10 +107,10 @@ class Diagram(monoidal.Diagram):
     """
     Implements diagrams of lenses composed of Python functions
     """
-    CARTESIAN_SEMANTICS = CartesianSemanticsFunctor()
-    CARTESIAN_GET = wiring.Functor(lambda t: monoidal.PRO(len(t)),
-                                   lambda f: f.get(), monoidal.PRO,
-                                   cartesian.Diagram)
+    CARTESIAN_WIRING = CartesianWiringSemantics()
+    WIRING_GET = wiring.Functor(lambda t: monoidal.PRO(len(t)),
+                                lambda f: f.get(), monoidal.PRO,
+                                cartesian.Diagram)
     FUNCTION_SEMANTICS = cartesian.PythonFunctor(lambda t: monoidal.PRO(len(t)),
                                                  lambda f: cartesian.Function(
                                                      len(f.dom), len(f.cod),
@@ -122,14 +122,20 @@ class Diagram(monoidal.Diagram):
         assert isinstance(cod, Ty)
         super().__init__(dom, cod, boxes, offsets, layers=layers)
 
-    def __call__(self, *vals, **kwargs):
+    def getter(self):
+        return Diagram.WIRING_GET(Diagram.CARTESIAN_WIRING(self))
+
+    def get(self, *vals, **kwargs):
         """
         Get method for Cartesian lenses.
         """
         if kwargs:
             vals = vals + (kwargs,)
-        get = Diagram.CARTESIAN_GET(Diagram.CARTESIAN_SEMANTICS(self))
+        get = self.getter()
         return get(*vals)
+
+    def putter(self):
+        return Diagram.CARTESIAN_WIRING(self).collapse(__put_falg__)[1]
 
     def put(self, *vals, **kwargs):
         """
@@ -137,7 +143,7 @@ class Diagram(monoidal.Diagram):
         """
         if kwargs:
             vals = vals + (kwargs,)
-        put = Diagram.CARTESIAN_SEMANTICS(self).collapse(__put_falg__)
+        put = self.putter()
         return put(*vals)
 
     @staticmethod
@@ -375,11 +381,15 @@ def __put_falg__(f):
     raise TypeError(messages.type_err(wiring.Diagram, f))
 
 @lru_cache(maxsize=None)
-def getter(diagram):
-    get = Diagram.CARTESIAN_GET(diagram)
-    return Diagram.FUNCTION_SEMANTICS(get)
+def getter(diagram, precompile=True):
+    get = Diagram.WIRING_GET(diagram)
+    if precompile:
+        get = Diagram.FUNCTION_SEMANTICS(get)
+    return get
 
 @lru_cache(maxsize=None)
-def putter(diagram):
+def putter(diagram, precompile=True):
     _, put = diagram.collapse(__put_falg__)
-    return Diagram.FUNCTION_SEMANTICS(put)
+    if precompile:
+        put = Diagram.FUNCTION_SEMANTICS(put)
+    return put
