@@ -152,16 +152,16 @@ class WeightedSampler(torch.nn.Module):
         # Return the feedback corresponding to the new target trace
         return self.feedback, partial(self.replay, wires)
 
-class ImportanceSemanticsFunctor(lens.CartesianSemanticsFunctor):
+class ImportanceWiringSemantics(lens.CartesianWiringSemantics):
     @classmethod
     def semantics(cls, f):
         if isinstance(f, ImportanceBox):
             return ImportanceWiringBox(f.name, f.dom, f.cod, f.sampler,
                                        data=f.data)
-        return super(ImportanceSemanticsFunctor, cls).semantics(f)
+        return super(ImportanceWiringSemantics, cls).semantics(f)
 
 class ImportanceBox(lens.Box):
-    IMPORTANCE_SEMANTICS = ImportanceSemanticsFunctor()
+    IMPORTANCE_SEMANTICS = ImportanceWiringSemantics()
     def __init__(self, name, dom, cod, sampler, data={}):
         assert isinstance(sampler, WeightedSampler)
         self._sampler = sampler
