@@ -39,8 +39,8 @@ class Resampler:
         pass
 
     @staticmethod
-    def resample_box(box, ancestors, particle_shape):
-        (args, kwargs), (results, p, lw) = box.peek()
+    def resample_sampler(sampler, ancestors, particle_shape):
+        (args, kwargs), (results, p, lw) = sampler.peek()
         args, results = list(args), list(results)
         for i, arg in enumerate(args):
             if torch.is_tensor(arg):
@@ -58,7 +58,7 @@ class Resampler:
             lw = utils.batch_mean(lw, particle_shape).expand(*ancestors.shape)
 
         args, results = tuple(args), tuple(results)
-        box.cache[(args, kwargs)] = (results, p, lw)
+        sampler.cache[(args, kwargs)] = (results, p, lw)
 
     def resample_diagram(self, *args, **kwargs):
         _, log_weight = sampler.trace(self.diagram)
@@ -68,8 +68,10 @@ class Resampler:
         assert ancestors.shape == log_weight.shape
 
         for box in self.diagram:
-            if isinstance(box, sampler.ImportanceWiringBox) and box.cache:
-                self.resample_box(box, ancestors, self._particle_shape)
+            if isinstance(box, sampler.ImportanceWiringBox) and\
+               box.sampler.cache:
+                self.resample_sampler(box.sampler, ancestors,
+                                      self._particle_shape)
 
         args = list(args)
         for i, val in enumerate(args):
