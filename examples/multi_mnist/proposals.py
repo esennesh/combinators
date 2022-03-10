@@ -11,8 +11,10 @@ class ObjectCodesProposal(nn.Module):
         self.spatial_transformer = spatial_transform
 
         self.object_hiddens = nn.Sequential(
-            nn.Linear(spatial_transform.img_side ** 2, hidden_dim), nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim // 2), nn.ReLU(),
+            nn.Linear(spatial_transform.glimpse_side ** 2, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
         )
         self.what_loc = nn.Linear(hidden_dim // 2, what_dim)
         self.what_log_scale = nn.Linear(hidden_dim // 2, what_dim)
@@ -26,10 +28,10 @@ class ObjectCodesProposal(nn.Module):
             else:
                 wheres.append(tensor)
         data = torch.stack(datas, dim=2)
-        wheres = torch.stack(wheres[:-1], dim=2)
+        wheres = torch.stack(wheres[:-1], dim=3)
         cropped = self.spatial_transformer.image2glimpse(data, wheres)
         cropped = torch.flatten(cropped, -2, -1)
-        hiddens = self.object_hiddens(cropped).mean(dim=2)
+        hiddens = self.object_hiddens(cropped).mean(dim=3)
 
         loc = self.what_loc(hiddens)
         scale = self.what_log_scale(hiddens).exp()
