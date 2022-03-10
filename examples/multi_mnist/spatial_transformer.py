@@ -48,18 +48,21 @@ class SpatialTransformer(nn.Module):
         return torch.clamp(reconstructions.sum(dim=2), min=0.0, max=1.0)
 
     def glimpse2image(self, glimpse, where):
-        P, B, K, _ = where.shape
+        P, B, K, T, _ = where.shape
         g2i_scale = self.glimpse_to_img_scale.repeat(*where.shape[:-1], 1, 1)
         g2i_trans = where.unsqueeze(-1) * self.glimpse_to_img_translate
-        g2i_trans[:, :, :, 0, :] = -1 * g2i_trans[:, :, :, 0, :]
+        g2i_trans[:, :, :, :, 0, :] = -1 * g2i_trans[:, :, :, :, 0, :]
 
-        g2i = torch.cat((g2i_scale, g2i_trans), dim=-1).view(P * B * K, 2, 3)
-        g2i_size = torch.Size([P * B * K, 1, self._img_side, self._img_side])
+        g2i = torch.cat((g2i_scale, g2i_trans), dim=-1).view(P * B * K * T, 2,
+                                                             3)
+        g2i_size = torch.Size([P * B * K * T, 1, self._img_side,
+                               self._img_side])
         grid = F.affine_grid(g2i, g2i_size, align_corners=True)
-        img = F.grid_sample(glimpse.view(P * B * K, self._glimpse_side,
+        img = F.grid_sample(glimpse.view(P * B * K * T, self._glimpse_side,
                                          self._glimpse_side).unsqueeze(dim=1),
                             grid, mode='nearest', align_corners=True)
-        return img.squeeze(dim=1).view(P, B, K, self._img_side, self._img_side)
+        return img.squeeze(dim=1).view(P, B, K, T, self._img_side,
+                                       self._img_side)
 
     def image2glimpse(self, img, where):
         P, B, K, _ = where.shape
