@@ -222,7 +222,7 @@ class Cap(CartesianBox):
         return ()
 
     def cap_put(self, *_):
-        return tuple(reversed(self._vals))
+        return self._vals
 
 class Copy(CartesianBox):
     def __init__(self, dom, n=2, join=None):
