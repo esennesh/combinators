@@ -155,9 +155,9 @@ class StepLocationsProposal(nn.Module):
             q_wheres.append(where)
 
             reconstruction = self.spatial_transformer.glimpse2image(
-                recons[:, :, k, :, :].unsqueeze(dim=2),
-                where.unsqueeze(dim=2)
-            ).squeeze(dim=2)
+                recons[:, :, k, :, :].unsqueeze(dim=2).unsqueeze(dim=3),
+                where.unsqueeze(dim=2).unsqueeze(dim=3)
+            ).squeeze(dim=3).squeeze(dim=2)
             framebuffer = framebuffer - reconstruction
 
         where_loc = torch.stack(locs, dim=2)
