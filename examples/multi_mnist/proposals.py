@@ -17,7 +17,16 @@ class ObjectCodesProposal(nn.Module):
         self.what_loc = nn.Linear(hidden_dim // 2, what_dim)
         self.what_log_scale = nn.Linear(hidden_dim // 2, what_dim)
 
-    def forward(self, q, wheres, data=None):
+    def forward(self, q, data_and_wheres, data=None):
+        datas = []
+        wheres = []
+        for tensor in data_and_wheres:
+            if tensor.shape[2] == 96:
+                datas.append(tensor)
+            else:
+                wheres.append(tensor)
+        data = torch.stack(datas, dim=2)
+        wheres = torch.stack(wheres[:-1], dim=2)
         cropped = self.spatial_transformer.image2glimpse(data, wheres)
         cropped = torch.flatten(cropped, -2, -1)
         hiddens = self.object_hiddens(cropped).mean(dim=2)
