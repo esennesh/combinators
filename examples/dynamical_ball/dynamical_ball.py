@@ -184,7 +184,7 @@ class StepBallProposal(nn.Module):
         self.direction_feedback = nn.Sequential(
             nn.Linear(2 * 6, 16), nn.PReLU(),
             nn.Linear(16, 16), nn.PReLU(),
-            nn.Linear(16, 2 * 4)
+            nn.Linear(16, 2 * 3)
         )
 
     def forward(self, q, prev_dir, prev_pos, uncertainty, noise, next_dir,
@@ -202,5 +202,6 @@ class StepBallProposal(nn.Module):
             (prev_dir, prev_pos, p['velocity'].value, p['position'].value,
              uncertainty, noise),
             dim=2,
-        )).view(-1, noise.shape[1], 2, 4)
-        return torch.unbind(stats, dim=-1)
+        )).view(-1, noise.shape[1], 2, 3).unbind(dim=-1)
+        stats = (stats[0], data,) + stats[1:]
+        return stats
