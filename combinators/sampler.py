@@ -188,7 +188,7 @@ class Copy(lens.Copy):
                     return torch.cat((x.unsqueeze(2), y), dim=2)
                 if len(y.shape) < len(x.shape):
                     return torch.cat((x, y.unsqueeze(2)), dim=2)
-            return (x, y)
+            return (cartesian.tuplify(x) + cartesian.tuplify(y),)
         def sig_update(*arg):
             sx.update(*arg)
             sy.update(*arg)
