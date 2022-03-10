@@ -23,7 +23,7 @@ class ObjectCodesProposal(nn.Module):
         datas = []
         wheres = []
         for tensor in data_and_wheres:
-            if tensor.shape[2] == 96:
+            if tensor.shape[2] == self.spatial_transformer.img_side:
                 datas.append(tensor)
             else:
                 wheres.append(tensor)
