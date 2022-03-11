@@ -202,7 +202,7 @@ class Copy(lens.Copy):
 class ImportanceWiringBox(lens.CartesianWiringBox):
     def __init__(self, name, dom, cod, sampler, data={}):
         assert isinstance(sampler, WeightedSampler)
-        self._sampler = sampler
+        self._sampler = copy(sampler)
 
         super().__init__(name, dom, cod, self.filter, self.smooth, data=data)
 
