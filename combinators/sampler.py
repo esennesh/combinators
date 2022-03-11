@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from copy import copy
 from functools import lru_cache, partial, reduce
 import inspect
 import probtorch
@@ -22,6 +23,10 @@ class WeightedSampler(torch.nn.Module):
 
         self.add_module('proposal', proposal)
         self.add_module('target', target)
+
+    def __copy__(self):
+        return WeightedSampler(self.target, self.proposal, self.batch_shape,
+                               self.particle_shape)
 
     @property
     def batch_shape(self):
@@ -197,7 +202,7 @@ class Copy(lens.Copy):
 class ImportanceWiringBox(lens.CartesianWiringBox):
     def __init__(self, name, dom, cod, sampler, data={}):
         assert isinstance(sampler, WeightedSampler)
-        self._sampler = sampler
+        self._sampler = copy(sampler)
 
         super().__init__(name, dom, cod, self.filter, self.smooth, data=data)
 
