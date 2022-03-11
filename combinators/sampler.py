@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from copy import copy
 from functools import lru_cache, partial, reduce
 import inspect
 import probtorch
@@ -22,6 +23,10 @@ class WeightedSampler(torch.nn.Module):
 
         self.add_module('proposal', proposal)
         self.add_module('target', target)
+
+    def __copy__(self):
+        return WeightedSampler(self.target, self.proposal, self.batch_shape,
+                               self.particle_shape)
 
     @property
     def batch_shape(self):
