@@ -75,8 +75,6 @@ class WeightedSampler(torch.nn.Module):
         if not self._pass_data and 'data' in kwargs:
             del kwargs['data']
 
-        args, kwargs = self.expand_args(*args, **kwargs)
-
         p = probtorch.NestedTrace(q=q)
         result = self.target(p, *args, **kwargs)
 
@@ -98,6 +96,7 @@ class WeightedSampler(torch.nn.Module):
         return args, kwargs
 
     def filter(self, *args, **kwargs):
+        args, kwargs = self.expand_args(*args, **kwargs)
         return self._cache(None, *args, **kwargs)[0]
 
     def replay(self, kont, *args, **kwargs):
@@ -122,6 +121,7 @@ class WeightedSampler(torch.nn.Module):
 
     def smooth(self, args, wires, **kwargs):
         dims = tuple(range(len(self.particle_shape)))
+        args, kwargs = self.expand_args(*args, **kwargs)
 
         # Retrieve the stored target trace from the cache, initializing by
         # filtering if necessary.
