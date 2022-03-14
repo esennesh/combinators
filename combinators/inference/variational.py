@@ -95,6 +95,9 @@ class VariationalLoss:
         self._loss = self._loss + self.objective()
         return args, kwargs
 
+    def clear(self):
+        self._loss = 0.
+
 def hook_variational(graph, variational, method='put', when='post'):
     for box in graph:
         if isinstance(box, sampler.ImportanceWiringBox):

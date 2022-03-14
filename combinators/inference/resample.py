@@ -93,7 +93,7 @@ class SystematicResampler(Resampler):
         uniforms = uniforms.expand(K, *unique).transpose(0, 1)
 
         positions = torch.arange(K, device=weights.device).expand(*unique, K)
-        positions = ((positions + uniforms) / K).transpose(0, 1)
+        positions = ((positions + uniforms) / K).transpose(0, 1).contiguous()
 
         cumsums = torch.cumsum(weights, dim=0)
         (normalizers, _) = torch.max(input=cumsums, dim=0, keepdim=True)
