@@ -54,18 +54,22 @@ class InitialLocationsProposal(nn.Module):
             nn.Linear(hidden_dim // 2, where_dim)
         )
 
-    def forward(self, q, recons, data=None):
+    def forward(self, q, recons_fb):
+        recons = recons_fb['recons']
+        image = recons_fb['image']
+
         _, _, K, glimpse_side, _ = recons.shape
-        P, B, _, img_side, _ = data.shape
+        P, B, img_side, _ = image.shape
 
         locs = []
         scales = []
         q_wheres = []
-        framebuffer = data
+        framebuffer = image
         for k in range(K):
-            features = framebuffer.view(P * B, img_side, img_side).unsqueeze(0)
-            kernel = recons[:, :, k, :, :].view(P * B, glimpse_side,
-                                                glimpse_side).unsqueeze(1)
+            features = framebuffer.reshape(P * B, img_side, img_side)
+            features = features.unsqueeze(0)
+            kernel = recons[:, :, k, :, :].reshape(P * B, glimpse_side,
+                                                   glimpse_side).unsqueeze(1)
             features = F.conv2d(features, kernel, groups=int(P * B))
             frame_side = features.shape[-1]
             features = F.softmax(features.squeeze(0).view(P, B,
