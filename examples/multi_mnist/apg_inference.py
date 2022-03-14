@@ -39,18 +39,17 @@ def hooks_apg(graph, particle_shape):
 
 def apg(diagram, num_iterations, particle_shape, data_loaders, use_cuda=True,
         lr=1e-3, patience=50, num_sweeps=6):
-    for box in diagram:
-        if isinstance(box, sampler.ImportanceWiringBox):
-            box.target.train()
-            box.proposal.train()
-
-    if torch.cuda.is_available() and use_cuda:
-        for box in diagram:
-            if isinstance(box, sampler.ImportanceWiringBox):
-                box.target.cuda()
-                box.proposal.cuda()
-
+    data_loaders = list(data_loaders)
     graph = sampler.compile(diagram >> signal.Cap(diagram.cod))
+
+    for box in graph:
+        if isinstance(box, sampler.ImportanceWiringBox):
+            box.sampler.train()
+
+            if torch.cuda.is_available() and use_cuda:
+                box.sampler.cuda()
+
+    dims = tuple(range(len(particle_shape)))
     losses = hooks_apg(graph, particle_shape)
 
     filtering = sampler.filtering(graph)
@@ -61,10 +60,13 @@ def apg(diagram, num_iterations, particle_shape, data_loaders, use_cuda=True,
         optimizer, factor=0.1, min_lr=1e-6, patience=patience, mode='min'
     )
 
-    objectives = torch.zeros(num_iterations, 2, requires_grad=False)
-    for t in range(num_iterations):
-        for _, loader in data_loaders:
+    log_joints = torch.zeros(num_iterations, requires_grad=False)
+    for t in tqdm.tqdm(range(num_iterations)):
+        for _, loader in tqdm.tqdm(data_loaders):
             for series in loader:
+                if torch.cuda.is_available() and use_cuda:
+                    series = series.cuda()
+
                 conditioning.sequential(graph, step_where=series.unbind(dim=1))
 
                 optimizer.zero_grad()
@@ -78,32 +80,32 @@ def apg(diagram, num_iterations, particle_shape, data_loaders, use_cuda=True,
                 optimizer.step()
                 scheduler.step(loss)
 
-                objectives[t, 0] += torch.stack(losses.elbos, dim=-1).detach()
-                objectives[t, 1] += torch.stack(losses.eubos, dim=-1).detach()
+                p, _ = sampler.trace(graph)
+                log_joint = p.log_joint(sample_dims=dims, batch_dim=len(dims))
+                log_joints[t] += log_joint.detach().cpu().sum(dim=1).mean(dim=0)
 
+                losses.clear()
                 sampler.clear(graph)
 
-        logging.info('Wake Theta IWAE free-energy=%.8e at epoch %d', loss,
+                if torch.cuda.is_available() and use_cuda:
+                    del series
+                    torch.cuda.empty_cache()
+
+        logging.info('Total log-joint=%.8e at epoch %d', log_joints[t].item(),
                      t + 1)
-        logging.info('Wake Phi EUBO=%.8e at epoch %d', loss, t + 1)
 
         if t % patience == 0:
-            for box in diagram:
+            for box in graph:
                 if isinstance(box, sampler.ImportanceWiringBox):
-                    theta = nn.utils.parameters_to_vector(box.target)
-                    torch.save(theta, box.name + '_theta_%d.pt' % t)
-                    phi = nn.utils.parameters_to_vector(box.proposal)
-                    torch.save(phi, box.name + '_phi_%d.pt' % t)
+                    theta = box.sampler.target.state_dict()
+                    torch.save(theta, box.name + '_theta_%d.pt' % (t+1))
+                    phi = box.sampler.proposal.state_dict()
+                    torch.save(phi, box.name + '_phi_%d.pt' % (t+1))
 
-    if torch.cuda.is_available() and use_cuda:
-        for box in diagram:
-            if isinstance(box, sampler.ImportanceWiringBox):
-                box.proposal.cpu()
-                box.target.cpu()
-
-    for box in diagram:
+    for box in graph:
         if isinstance(box, sampler.ImportanceWiringBox):
-            box.proposal.eval()
-            box.target.eval()
+            box.sampler.eval()
+            if torch.cuda.is_available() and use_cuda:
+                box.sampler.cpu()
 
-    return objectives
+    return log_joints
