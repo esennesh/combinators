@@ -56,7 +56,6 @@ def infer(diagram, num_iterations, objective=elbo, use_cuda=True, lr=1e-3,
         loss = objective(log_weight, particle_shape=particle_shape)
 
         (-loss).backward()
-        import pdb; pdb.set_trace()
         optimizer.step()
 
         loss = loss.cpu().item()
