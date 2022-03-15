@@ -186,9 +186,13 @@ class Copy(lens.Copy):
         def sig(*arg):
             x = cartesian.untuplify(*sx(*arg))
             y = cartesian.untuplify(*sy(*arg))
-            if torch.is_tensor(x) and torch.is_tensor(y) and\
-               len(x.shape) == len(y.shape):
-                return torch.stack((x, y), dim=2)
+            if torch.is_tensor(x) and torch.is_tensor(y):
+                if len(x.shape) == len(y.shape):
+                    return torch.stack((x, y), dim=2)
+                if len(x.shape) < len(y.shape):
+                    return torch.cat((x.unsqueeze(dim=2), y), dim=2)
+                if len(x.shape) > len(y.shape):
+                    return torch.cat((x, y.unsqueeze(dim=2)), dim=2)
             if isinstance(x, dict) and isinstance(y, dict):
                 result = {}
                 for k, v in x.items():
