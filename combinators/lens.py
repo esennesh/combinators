@@ -238,10 +238,11 @@ class Copy(CartesianBox):
     def combine(self, *args):
         assert len(args) == len(self.dom) + len(self.cod)
         bkwds = args[len(self.dom):len(self.dom) + len(self.cod)]
+        fbs = bkwds[:len(self.dom)]
         for k in range(1, self._n):
-            bkwdy = args[(k + 1) * len(self.dom):(k + 2) * len(self.dom)]
-            bkwds = tuple(self._join(x, y) for x, y in zip(bkwds, bkwdy))
-        return bkwds
+            fbks = bkwds[k * len(self.dom):(k + 1) * len(self.dom)]
+            fbs = tuple(self._join(x, y) for x, y in zip(fbs, fbks))
+        return fbs
 
 class Swap(CartesianBox):
     def __init__(self, left, right):
