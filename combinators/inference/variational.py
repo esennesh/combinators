@@ -25,18 +25,18 @@ def eubo(log_weight, particle_shape=(1,), iwae=False):
 
 def infer(diagram, num_iterations, objective=elbo, use_cuda=True, lr=1e-3,
           patience=50, particle_shape=(1,)):
-    for box in diagram:
-        if isinstance(box, sampler.ImportanceWiringBox):
-            box.target.train()
-            box.proposal.train()
-
-    if torch.cuda.is_available() and use_cuda:
-        for box in diagram:
-            if isinstance(box, sampler.ImportanceWiringBox):
-                box.target.cuda()
-                box.proposal.cuda()
-
     graph = sampler.compile(diagram >> signal.Cap(diagram.cod))
+
+    for box in graph:
+        if isinstance(box, sampler.ImportanceWiringBox):
+            box.sampler.train()
+
+            if torch.cuda.is_available() and use_cuda:
+                box.sampler.cuda()
+                for k, v in box.data.items():
+                    if torch.is_tensor(v):
+                        box.data[k] = v.cuda()
+
     filtering = sampler.filtering(graph)
     smoothing = sampler.smoothing(graph)
     theta, phi = sampler.parameters(graph)
@@ -58,23 +58,25 @@ def infer(diagram, num_iterations, objective=elbo, use_cuda=True, lr=1e-3,
         (-loss).backward()
         optimizer.step()
 
-        loss = loss.item()
+        loss = loss.cpu().item()
         logging.info('%s=%.8e at epoch %d', objective.__name__, loss, t + 1)
         scheduler.step(loss)
         objs[t] = loss
 
         sampler.clear(graph)
 
-    if torch.cuda.is_available() and use_cuda:
-        for box in diagram:
-            if isinstance(box, sampler.ImportanceWiringBox):
-                box.proposal.cpu()
-                box.target.cpu()
+        if torch.cuda.is_available() and use_cuda:
+            torch.cuda.empty_cache()
 
-    for box in diagram:
+    for box in graph:
         if isinstance(box, sampler.ImportanceWiringBox):
-            box.proposal.eval()
-            box.target.eval()
+            if torch.cuda.is_available() and use_cuda:
+                for k, v in box.data.items():
+                    if torch.is_tensor(v):
+                        box.data[k] = v.cpu()
+                box.sampler.cpu()
+
+            box.sampler.eval()
 
     return objs
 
