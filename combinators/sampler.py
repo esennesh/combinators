@@ -19,7 +19,7 @@ class WeightedSampler(torch.nn.Module):
         self._pass_batch_shape = 'batch_shape' in sig.parameters
         self._pass_particle_shape = 'particle_shape' in sig.parameters
 
-        self._cache = utils.TensorialCache(None, self.forward)
+        self._cache = utils.TensorialCache(1, self.forward)
 
         self.add_module('proposal', proposal)
         self.add_module('target', target)
