@@ -13,31 +13,22 @@ import combinators.inference.variational as variational
 class ApgLoss(variational.VariationalLoss):
     def __init__(self, diagram, particle_shape=(1,)):
         super().__init__(diagram)
-        self._elbos = []
-        self._eubos = []
         self._particle_shape = particle_shape
-
-    @property
-    def elbos(self):
-        return self._elbos
-
-    @property
-    def eubos(self):
-        return self._eubos
 
     def objective(self):
         diagram = self._globals[0]
         _, log_weight = sampler.trace(diagram)
 
-        theta_elbo = -variational.elbo(log_weight, iwae=True,
-                                       particle_shape=self._particle_shape)
-        self._elbos.append(theta_elbo)
+        theta_elbo = variational.elbo(log_weight, iwae=True,
+                                      particle_shape=self._particle_shape)
 
         phi_eubo   = variational.eubo(log_weight, iwae=False,
                                       particle_shape=self._particle_shape)
-        self._eubos.append(phi_eubo)
 
-        return theta_elbo + phi_eubo
+        return -theta_elbo + phi_eubo
+
+    def clear(self):
+        super().clear()
 
 def hooks_apg(graph, particle_shape):
     resample.hook_resampling(graph, particle_shape, method='put', when='pre',
