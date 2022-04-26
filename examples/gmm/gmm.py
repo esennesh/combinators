@@ -100,7 +100,7 @@ class SamplePoint(nn.Module):
         mu = torch.take_along_dim(mus, z , dim=2)
         sigma = torch.take_along_dim(sigmas, z , dim=2)
         x = p.normal(mu, sigma, name='x', value=data)
-        return ()
+        return x
 
 class ObservationGibbs(nn.Module):
     def forward(self, q, mus, sigmas, zs, data=None):
