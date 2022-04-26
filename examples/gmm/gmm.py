@@ -103,7 +103,7 @@ class SamplePoint(nn.Module):
         return x
 
 class ObservationGibbs(nn.Module):
-    def forward(self, q, mus, sigmas, zs, data=None):
+    def forward(self, q, mus, sigmas, zs, xs, data=None):
         pass
 
     def feedback(self, p, mus, sigmas, zs, data=None):
