@@ -11,25 +11,20 @@ class ObjectCodesProposal(nn.Module):
         self.spatial_transformer = spatial_transform
 
         self.object_hiddens = nn.Sequential(
-            nn.Linear(spatial_transform.img_side ** 2, hidden_dim), nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim // 2), nn.ReLU(),
+            nn.Linear(spatial_transform.glimpse_side ** 2, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
         )
         self.what_loc = nn.Linear(hidden_dim // 2, what_dim)
         self.what_log_scale = nn.Linear(hidden_dim // 2, what_dim)
 
-    def forward(self, q, data_and_wheres, data=None):
-        datas = []
-        wheres = []
-        for tensor in data_and_wheres:
-            if tensor.shape[2] == 96:
-                datas.append(tensor)
-            else:
-                wheres.append(tensor)
-        data = torch.stack(datas, dim=2)
-        wheres = torch.stack(wheres[:-1], dim=2)
-        cropped = self.spatial_transformer.image2glimpse(data, wheres)
+    def forward(self, q, wheres_fb):
+        images = torch.stack(wheres_fb['images'], dim=2)
+        wheres = torch.stack(wheres_fb['z_where'], dim=3)
+        cropped = self.spatial_transformer.image2glimpse(images, wheres)
         cropped = torch.flatten(cropped, -2, -1)
-        hiddens = self.object_hiddens(cropped).mean(dim=2)
+        hiddens = self.object_hiddens(cropped).mean(dim=3)
 
         loc = self.what_loc(hiddens)
         scale = self.what_log_scale(hiddens).exp()
@@ -59,18 +54,22 @@ class InitialLocationsProposal(nn.Module):
             nn.Linear(hidden_dim // 2, where_dim)
         )
 
-    def forward(self, q, recons, data=None):
+    def forward(self, q, recons_fb):
+        recons = recons_fb['recons']
+        image = recons_fb['image']
+
         _, _, K, glimpse_side, _ = recons.shape
-        P, B, _, img_side, _ = data.shape
+        P, B, img_side, _ = image.shape
 
         locs = []
         scales = []
         q_wheres = []
-        framebuffer = data
+        framebuffer = image
         for k in range(K):
-            features = framebuffer.view(P * B, img_side, img_side).unsqueeze(0)
-            kernel = recons[:, :, k, :, :].view(P * B, glimpse_side,
-                                                glimpse_side).unsqueeze(1)
+            features = framebuffer.reshape(P * B, img_side, img_side)
+            features = features.unsqueeze(0)
+            kernel = recons[:, :, k, :, :].reshape(P * B, glimpse_side,
+                                                   glimpse_side).unsqueeze(1)
             features = F.conv2d(features, kernel, groups=int(P * B))
             frame_side = features.shape[-1]
             features = F.softmax(features.squeeze(0).view(P, B,
@@ -88,9 +87,9 @@ class InitialLocationsProposal(nn.Module):
             q_wheres.append(where)
 
             reconstruction = self.spatial_transformer.glimpse2image(
-                recons[:, :, k, :, :].unsqueeze(dim=2),
-                where.unsqueeze(dim=2)
-            ).squeeze(dim=2)
+                recons[:, :, k, :, :].unsqueeze(dim=2).unsqueeze(dim=3),
+                where.unsqueeze(dim=2).unsqueeze(dim=3)
+            ).squeeze(dim=3).squeeze(dim=2)
             framebuffer = framebuffer - reconstruction
 
         where_loc = torch.stack(locs, dim=2)
@@ -153,9 +152,9 @@ class StepLocationsProposal(nn.Module):
             q_wheres.append(where)
 
             reconstruction = self.spatial_transformer.glimpse2image(
-                recons[:, :, k, :, :].unsqueeze(dim=2),
-                where.unsqueeze(dim=2)
-            ).squeeze(dim=2)
+                recons[:, :, k, :, :].unsqueeze(dim=2).unsqueeze(dim=3),
+                where.unsqueeze(dim=2).unsqueeze(dim=3)
+            ).squeeze(dim=3).squeeze(dim=2)
             framebuffer = framebuffer - reconstruction
 
         where_loc = torch.stack(locs, dim=2)
@@ -166,4 +165,6 @@ class StepLocationsProposal(nn.Module):
 
     def feedback(self, p, wheres, whats, data=None):
         recons = self.spatial_transformer.predict_obj_mean(whats, True)
-        return (recons, (data, p['z^{where}'].value))
+        wheres_fb = {'recons': recons, 'image': data}
+        whats_fb = {'images': data, 'z_where': p['z^{where}'].value}
+        return (wheres_fb, whats_fb)

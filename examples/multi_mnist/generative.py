@@ -2,6 +2,7 @@
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 class InitialObjectCodes(nn.Module):
     def __init__(self, what_dim, num_objects):
@@ -45,6 +46,10 @@ class InitialObjectLocations(nn.Module):
 
         return p.normal(where_locs, where_scales, name='z^{where}')
 
+def img_cross_entropy(value, target):
+    losses = F.binary_cross_entropy(value, target, reduction='none')
+    return losses.sum(dim=-1).sum(dim=-1)
+
 class StepObjects(nn.Module):
     def __init__(self, where_dim, spatial_transform):
         super().__init__()
@@ -54,8 +59,11 @@ class StepObjects(nn.Module):
         self.register_buffer('where_t_scale', torch.ones(where_dim) * 0.2)
 
     def reconstruct(self, obj_avgs, wheres):
+        obj_avgs = obj_avgs.unsqueeze(dim=3)
+        wheres = wheres.unsqueeze(dim=3)
         reconstructions = self.spatial_transformer.glimpse2image(obj_avgs,
                                                                  wheres)
+        reconstructions = reconstructions.squeeze(dim=3)
         return torch.clamp(reconstructions.sum(dim=2), min=0.0, max=1.0)
 
     def forward(self, p, wheres, whats, data=None):
@@ -63,8 +71,7 @@ class StepObjects(nn.Module):
         obj_avgs = self.spatial_transformer.predict_obj_mean(whats, False)
         wheres_t = p.normal(wheres, self.where_t_scale, name='z^{where}')
 
-        reconstructions = self.spatial_transformer.reconstruct(obj_avgs,
-                                                               wheres_t)
-        p.continuous_bernoulli(reconstructions, name='x', value=data)
+        reconstructions = self.reconstruct(obj_avgs, wheres_t)
+        p.loss(img_cross_entropy, reconstructions, data, name='x')
 
         return wheres_t
